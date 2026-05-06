@@ -1,8 +1,10 @@
-import type { Coordinates, RouteData, SimulationResponse } from "../types";
+import { getTexts } from "../i18n";
+import type { Coordinates, Language, RouteData, SimulationResponse } from "../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
 type SimulateParams = {
+  language: Language;
   start: Coordinates;
   end: Coordinates;
   routeMeta: {
@@ -28,6 +30,7 @@ export async function simulateBraess(
   params: SimulateParams
 ): Promise<SimulationResponse> {
   let response: Response;
+  const errors = getTexts(params.language).errors;
 
   try {
     response = await fetch(`${API_BASE_URL}/api/simulate`, {
@@ -36,7 +39,7 @@ export async function simulateBraess(
       body: JSON.stringify(params)
     });
   } catch {
-    throw new Error("Simulasyon API'sine baglanilamadi. Docker servislerini kontrol edin.");
+    throw new Error(errors.apiConnection);
   }
 
   if (!response.ok) {
@@ -52,11 +55,10 @@ export async function simulateBraess(
       ? `${firstIssue.path?.join(".")}: ${firstIssue.message}`
       : undefined;
     const detail = payload?.detail ?? issueText;
-    const message = payload?.message ?? "Simulasyon servisi yanit vermedi.";
+    const message = payload?.message ?? errors.apiNoResponse;
 
     throw new Error(detail ? `${message}: ${detail}` : message);
   }
 
   return (await response.json()) as SimulationResponse;
 }
-

@@ -1,4 +1,5 @@
-import type { Coordinates, ScenarioOption } from "../types";
+import { getTexts } from "../i18n";
+import type { Coordinates, Language, ScenarioOption } from "../types";
 
 type Props = {
   startInput: string;
@@ -19,7 +20,10 @@ type Props = {
   loading: boolean;
   startPoint: Coordinates | null;
   endPoint: Coordinates | null;
+  language: Language;
 };
+
+const scenarioOptions: ScenarioOption[] = ["mevcut_ag", "yeni_yol_ekle", "yol_kapat"];
 
 export function ControlPanel(props: Props) {
   const {
@@ -40,98 +44,84 @@ export function ControlPanel(props: Props) {
     onReset,
     loading,
     startPoint,
-    endPoint
+    endPoint,
+    language
   } = props;
+  const text = getTexts(language).controls;
 
   return (
     <aside className="side-panel">
       <div className="panel-title">
-        <h2>Kontrol Paneli</h2>
-        <p>V1.0 Karar Destek Sistemi</p>
+        <h2>{text.title}</h2>
+        <p>{text.subtitle}</p>
       </div>
 
       <div className="form-block">
-        <label>BAŞLANGIÇ NOKTASI</label>
+        <label>{text.startLabel}</label>
         <input
           value={startInput}
           onChange={(e) => onStartInputChange(e.target.value)}
-          placeholder="Enlem, Boylam"
+          placeholder={text.placeholder}
         />
         <button
           type="button"
           className={pickMode === "start" ? "secondary-btn active" : "secondary-btn"}
           onClick={() => setPickMode(pickMode === "start" ? null : "start")}
         >
-          Haritadan Seç
+          {text.chooseFromMap}
         </button>
         <p className="coord-label">
           {startPoint
-            ? `Seçili: ${startPoint.lat.toFixed(5)}, ${startPoint.lon.toFixed(5)}`
-            : "Seçili başlangıç yok"}
+            ? `${text.selectedPrefix}: ${startPoint.lat.toFixed(5)}, ${startPoint.lon.toFixed(5)}`
+            : text.noStart}
         </p>
       </div>
 
       <div className="form-block">
-        <label>VARIŞ NOKTASI</label>
+        <label>{text.endLabel}</label>
         <input
           value={endInput}
           onChange={(e) => onEndInputChange(e.target.value)}
-          placeholder="Enlem, Boylam"
+          placeholder={text.placeholder}
         />
         <button
           type="button"
           className={pickMode === "end" ? "secondary-btn active" : "secondary-btn"}
           onClick={() => setPickMode(pickMode === "end" ? null : "end")}
         >
-          Haritadan Seç
+          {text.chooseFromMap}
         </button>
         <p className="coord-label">
           {endPoint
-            ? `Seçili: ${endPoint.lat.toFixed(5)}, ${endPoint.lon.toFixed(5)}`
-            : "Seçili varış yok"}
+            ? `${text.selectedPrefix}: ${endPoint.lat.toFixed(5)}, ${endPoint.lon.toFixed(5)}`
+            : text.noEnd}
         </p>
       </div>
 
       <button type="button" className="apply-coord-btn" onClick={onApplyCoordinateInput}>
-        Lat/Lon Girişini Uygula
+        {text.applyCoordinates}
       </button>
 
       <div className="form-block">
-        <label>SENARYO AYARLARI</label>
+        <label>{text.scenarioSettings}</label>
         <div className="radio-group">
-          <label>
-            <input
-              type="radio"
-              name="scenario"
-              checked={selectedScenario === "mevcut_ag"}
-              onChange={() => setSelectedScenario("mevcut_ag")}
-            />
-            Mevcut Ağ
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="scenario"
-              checked={selectedScenario === "yeni_yol_ekle"}
-              onChange={() => setSelectedScenario("yeni_yol_ekle")}
-            />
-            Yeni Yol Ekle
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="scenario"
-              checked={selectedScenario === "yol_kapat"}
-              onChange={() => setSelectedScenario("yol_kapat")}
-            />
-            Yol Kapat
-          </label>
+          {scenarioOptions.map((scenario) => (
+            <label key={scenario}>
+              <input
+                type="radio"
+                name="scenario"
+                checked={selectedScenario === scenario}
+                onChange={() => setSelectedScenario(scenario)}
+              />
+              {text.scenarios[scenario]}
+            </label>
+          ))}
         </div>
       </div>
 
       <div className="toggle-block">
         <label>
-          Trafik Lambası
+          {text.trafficLight}
           <input
             type="checkbox"
             checked={trafficLight}
@@ -139,7 +129,7 @@ export function ControlPanel(props: Props) {
           />
         </label>
         <label>
-          Acil Araç Önceliği
+          {text.emergencyPriority}
           <input
             type="checkbox"
             checked={emergencyPriority}
@@ -150,13 +140,12 @@ export function ControlPanel(props: Props) {
 
       <div className="panel-actions">
         <button type="button" className="primary-btn" onClick={onAnalyze} disabled={loading}>
-          {loading ? "Simülasyon Hesaplanıyor..." : "Analizi Başlat"}
+          {loading ? text.loading : text.analyze}
         </button>
         <button type="button" className="reset-btn" onClick={onReset} disabled={loading}>
-          Sıfırla
+          {text.reset}
         </button>
       </div>
     </aside>
   );
 }
-

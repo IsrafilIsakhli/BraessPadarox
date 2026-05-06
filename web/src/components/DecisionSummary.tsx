@@ -1,7 +1,9 @@
-import type { ScenarioResult, SimulationResponse } from "../types";
+import { getTexts } from "../i18n";
+import type { Language, ScenarioResult, SimulationResponse } from "../types";
 
 type Props = {
   simulation: SimulationResponse | null;
+  language: Language;
 };
 
 function scenarioTone(scenario: ScenarioResult): string {
@@ -10,9 +12,10 @@ function scenarioTone(scenario: ScenarioResult): string {
   return "neutral";
 }
 
-export function DecisionSummary({ simulation }: Props) {
+export function DecisionSummary({ simulation, language }: Props) {
   if (!simulation) return null;
 
+  const text = getTexts(language).decision;
   const baseline = simulation.scenarios.find((scenario) => scenario.key === "mevcut_ag");
   const maxMinutes = Math.max(...simulation.scenarios.map((scenario) => scenario.totalMinutes));
   const selectedSignal = simulation.interventions.trafficSignals.find((signal) => signal.selected);
@@ -20,38 +23,36 @@ export function DecisionSummary({ simulation }: Props) {
   return (
     <section className="decision-panel">
       <div className="decision-verdict">
-        <span>KARAR ÖZETİ</span>
-        <h2>{simulation.braessDetected ? "Yeni yol riskli görünüyor" : "Yeni yol krizi görünmüyor"}</h2>
+        <span>{text.eyebrow}</span>
+        <h2>{simulation.braessDetected ? text.braessRisk : text.braessSafe}</h2>
         <p>{simulation.summary.plainLanguage}</p>
       </div>
 
       <div className="confidence-meter">
-        <span>GÜVEN</span>
+        <span>{text.confidence}</span>
         <strong>{simulation.summary.confidencePercent}%</strong>
         <p>
-          {simulation.summary.directionality.oneWayEdges} tek yönlü kenar,{" "}
-          {simulation.summary.directionality.twoWayPairs} çift yönlü bağlantı dikkate alındı.
+          {text.directionality(
+            simulation.summary.directionality.oneWayEdges,
+            simulation.summary.directionality.twoWayPairs
+          )}
         </p>
       </div>
 
       <div className="human-next-step">
-        <span>SAHADA İLK BAKILACAK NOKTA</span>
+        <span>{text.nextStep}</span>
         <strong>
           {selectedSignal
             ? `${selectedSignal.location.lat.toFixed(5)}, ${selectedSignal.location.lon.toFixed(5)}`
             : simulation.recommended.title}
         </strong>
-        <p>
-          {selectedSignal
-            ? "Bu noktada sinyal düzeni testi en hızlı iyileşmeyi verdi."
-            : "Model bu senaryoyu en düşük ortalama süreyle seçti."}
-        </p>
+        <p>{selectedSignal ? text.signalStep : text.recommendedStep}</p>
       </div>
 
       <div className="scenario-bars">
         <div className="bars-header">
-          <span>SENARYOLARIN GÖRSEL KARŞILAŞTIRMASI</span>
-          {baseline && <em>Referans: {baseline.totalMinutes.toFixed(1)} dk</em>}
+          <span>{text.scenarioVisual}</span>
+          {baseline && <em>{text.reference}: {baseline.totalMinutes.toFixed(1)} {text.minuteShort}</em>}
         </div>
         {simulation.scenarios.map((scenario) => (
           <div key={scenario.key} className="bar-row">
@@ -62,11 +63,10 @@ export function DecisionSummary({ simulation }: Props) {
                 style={{ width: `${Math.max(8, (scenario.totalMinutes / maxMinutes) * 100)}%` }}
               />
             </div>
-            <strong>{scenario.totalMinutes.toFixed(1)} dk</strong>
+            <strong>{scenario.totalMinutes.toFixed(1)} {text.minuteShort}</strong>
           </div>
         ))}
       </div>
     </section>
   );
 }
-

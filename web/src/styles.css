@@ -43,6 +43,12 @@ body {
   gap: 24px;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
 .topbar nav button {
   border: 0;
   background: transparent;
@@ -61,6 +67,41 @@ body {
 
 .topbar nav button.active {
   box-shadow: inset 0 -2px 0 #0a2a8f;
+}
+
+.language-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid #d8dce8;
+  border-radius: 999px;
+  background: #f7f8fc;
+}
+
+.language-switch span {
+  padding: 0 6px 0 8px;
+  color: #5f6375;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.language-switch button {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #4e5366;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 7px 10px;
+}
+
+.language-switch button.active {
+  background: #0a2a8f;
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(10, 42, 143, 0.18);
 }
 
 .content-area {
@@ -755,6 +796,18 @@ tbody tr.highlight {
 
   .topbar .brand {
     font-size: 26px;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .topbar nav {
+    flex-wrap: wrap;
+    gap: 14px;
   }
 
   .info-panel-header,

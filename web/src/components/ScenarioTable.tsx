@@ -1,14 +1,10 @@
-import type { ScenarioResult, SimulationResponse } from "../types";
+import { getTexts } from "../i18n";
+import type { Language, ScenarioResult, SimulationResponse } from "../types";
 
 type Props = {
   simulation: SimulationResponse | null;
+  language: Language;
 };
-
-function statusLabel(status: ScenarioResult["status"]): string {
-  if (status === "Dusuk") return "DÜŞÜK";
-  if (status === "Orta") return "ORTA";
-  return "YÜKSEK";
-}
 
 function statusClass(status: ScenarioResult["status"]): string {
   if (status === "Dusuk") return "badge low";
@@ -16,18 +12,21 @@ function statusClass(status: ScenarioResult["status"]): string {
   return "badge high";
 }
 
-export function ScenarioTable({ simulation }: Props) {
+export function ScenarioTable({ simulation, language }: Props) {
   if (!simulation) return null;
+
+  const textBundle = getTexts(language);
+  const text = textBundle.table;
 
   return (
     <section className="table-card">
       <div className="table-header">
-        <h3>Senaryo Karşılaştırması</h3>
+        <h3>{text.title}</h3>
         <div className="export-buttons">
           <button type="button">PNG</button>
           <button type="button">CSV</button>
           <button type="button" className="html-btn">
-            HTML Rapor
+            {text.report}
           </button>
         </div>
       </div>
@@ -35,13 +34,13 @@ export function ScenarioTable({ simulation }: Props) {
       <table>
         <thead>
           <tr>
-            <th>Senaryo</th>
-            <th>Süre</th>
-            <th>Gecikme</th>
-            <th>Fark</th>
-            <th>Yoğunluk</th>
-            <th>Durum</th>
-            <th>Müdahale</th>
+            <th>{text.scenario}</th>
+            <th>{text.time}</th>
+            <th>{text.delay}</th>
+            <th>{text.delta}</th>
+            <th>{text.congestion}</th>
+            <th>{text.status}</th>
+            <th>{text.intervention}</th>
           </tr>
         </thead>
         <tbody>
@@ -51,19 +50,19 @@ export function ScenarioTable({ simulation }: Props) {
               className={scenario.key === simulation.recommended.key ? "highlight" : ""}
             >
               <td>{scenario.title}</td>
-              <td>{scenario.totalMinutes.toFixed(1)} dk</td>
-              <td>{scenario.delayMinutes.toFixed(1)} dk</td>
+              <td>{scenario.totalMinutes.toFixed(1)} {text.minuteShort}</td>
+              <td>{scenario.delayMinutes.toFixed(1)} {text.minuteShort}</td>
               <td className={scenario.deltaMinutes > 0 ? "delta bad" : "delta good"}>
                 {scenario.deltaMinutes > 0 ? "+" : ""}
-                {scenario.deltaMinutes.toFixed(2)} dk
+                {scenario.deltaMinutes.toFixed(2)} {text.minuteShort}
               </td>
               <td>%{Math.round(scenario.congestionPercent)}</td>
               <td>
                 <span className={statusClass(scenario.status)}>
-                  {statusLabel(scenario.status)}
+                  {textBundle.status[scenario.status]}
                 </span>
               </td>
-              <td>{scenario.intervention ?? "Referans"}</td>
+              <td>{scenario.intervention ?? text.reference}</td>
             </tr>
           ))}
         </tbody>

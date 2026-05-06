@@ -1,15 +1,18 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ControlPanel } from "./components/ControlPanel";
 import { DecisionSummary } from "./components/DecisionSummary";
 import { InterventionPanel } from "./components/InterventionPanel";
-import { InfoPanel, type InfoPageKey } from "./components/InfoPanel";
+import { InfoPanel } from "./components/InfoPanel";
 import { LeafletMap } from "./components/LeafletMap";
 import { MetricsCards } from "./components/MetricsCards";
 import { ScenarioTable } from "./components/ScenarioTable";
+import { getTexts } from "./i18n";
 import { simulateBraess } from "./services/api";
 import { fetchDrivingRoutes } from "./services/routing";
 import type {
   Coordinates,
+  InfoPageKey,
+  Language,
   RouteData,
   ScenarioKey,
   ScenarioOption,
@@ -50,6 +53,7 @@ function mapOptionToScenario(
 }
 
 export default function App() {
+  const [language, setLanguage] = useState<Language>("en");
   const [startInput, setStartInput] = useState("40.4206, 49.9187");
   const [endInput, setEndInput] = useState("40.4042, 49.8075");
   const [startPoint, setStartPoint] = useState<Coordinates | null>(null);
@@ -65,6 +69,12 @@ export default function App() {
   const [simulation, setSimulation] = useState<SimulationResponse | null>(null);
   const [baseRoute, setBaseRoute] = useState<RouteData | null>(null);
   const [alternativeRoute, setAlternativeRoute] = useState<RouteData | null>(null);
+  const texts = getTexts(language);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+    document.title = texts.app.documentTitle;
+  }, [language, texts.app.documentTitle]);
 
   const center = useMemo(() => {
     if (startPoint) return startPoint;
@@ -87,7 +97,7 @@ export default function App() {
     const parsedEnd = parseCoordInput(endInput);
 
     if (!parsedStart || !parsedEnd) {
-      setErrorMessage("Koordinat formatı geçersiz. Örnek: 40.4093, 49.8671");
+      setErrorMessage(texts.errors.invalidCoordinates);
       return;
     }
 
@@ -122,12 +132,20 @@ export default function App() {
     setAlternativeRoute(null);
   }
 
+  function handleLanguageChange(nextLanguage: Language) {
+    if (nextLanguage === language) return;
+    setLanguage(nextLanguage);
+    setActiveInfoPage(null);
+    setErrorMessage(null);
+    setSimulation(null);
+  }
+
   async function handleAnalyze() {
     const start = startPoint ?? parseCoordInput(startInput);
     const end = endPoint ?? parseCoordInput(endInput);
 
     if (!start || !end) {
-      setErrorMessage("Analiz için başlangıç ve varış koordinatları zorunludur.");
+      setErrorMessage(texts.errors.missingCoordinates);
       return;
     }
 
@@ -135,10 +153,10 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const routes = await fetchDrivingRoutes(start, end);
+      const routes = await fetchDrivingRoutes(start, end, language);
       let reverseRoutes: RouteData[] = [];
       try {
-        reverseRoutes = await fetchDrivingRoutes(end, start);
+        reverseRoutes = await fetchDrivingRoutes(end, start, language);
       } catch {
         reverseRoutes = [];
       }
@@ -148,6 +166,7 @@ export default function App() {
       setAlternativeRoute(altRoute ?? null);
 
       const response = await simulateBraess({
+        language,
         start,
         end,
         routeMeta: {
@@ -166,7 +185,7 @@ export default function App() {
       setSimulation(response);
       setPickMode(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Beklenmeyen hata oluştu.";
+      const message = err instanceof Error ? err.message : texts.errors.unexpected;
       setErrorMessage(message);
     } finally {
       setLoading(false);
@@ -176,30 +195,38 @@ export default function App() {
   return (
     <div className="layout">
       <header className="topbar">
-        <div className="brand">Braess Paradoksu Analiz</div>
-        <nav>
-          <button
-            type="button"
-            className={activeInfoPage === "documentation" ? "active" : ""}
-            onClick={() => setActiveInfoPage("documentation")}
-          >
-            Dokümantasyon
-          </button>
-          <button
-            type="button"
-            className={activeInfoPage === "methodology" ? "active" : ""}
-            onClick={() => setActiveInfoPage("methodology")}
-          >
-            Metodoloji
-          </button>
-          <button
-            type="button"
-            className={activeInfoPage === "about" ? "active" : ""}
-            onClick={() => setActiveInfoPage("about")}
-          >
-            Hakkında
-          </button>
-        </nav>
+        <div className="brand">{texts.app.brand}</div>
+        <div className="topbar-actions">
+          <nav>
+            {(["documentation", "methodology", "about"] as InfoPageKey[]).map((page) => (
+              <button
+                key={page}
+                type="button"
+                className={activeInfoPage === page ? "active" : ""}
+                onClick={() => setActiveInfoPage(page)}
+              >
+                {texts.nav[page]}
+              </button>
+            ))}
+          </nav>
+          <div className="language-switch" aria-label={texts.language.label}>
+            <span>{texts.language.label}</span>
+            <button
+              type="button"
+              className={language === "en" ? "active" : ""}
+              onClick={() => handleLanguageChange("en")}
+            >
+              {texts.language.english}
+            </button>
+            <button
+              type="button"
+              className={language === "tr" ? "active" : ""}
+              onClick={() => handleLanguageChange("tr")}
+            >
+              {texts.language.turkish}
+            </button>
+          </div>
+        </div>
       </header>
 
       <div className="content-area">
@@ -222,12 +249,17 @@ export default function App() {
           loading={loading}
           startPoint={startPoint}
           endPoint={endPoint}
+          language={language}
         />
 
         <main className="main-panel">
           {errorMessage && <div className="error-banner">{errorMessage}</div>}
 
-          <InfoPanel activePage={activeInfoPage} onClose={() => setActiveInfoPage(null)} />
+          <InfoPanel
+            activePage={activeInfoPage}
+            language={language}
+            onClose={() => setActiveInfoPage(null)}
+          />
 
           <LeafletMap
             center={center}
@@ -240,12 +272,17 @@ export default function App() {
             activeScenarioKey={activeScenarioKey}
             newRoad={simulation?.interventions.newRoad ?? null}
             trafficSignals={simulation?.interventions.trafficSignals ?? []}
+            language={language}
           />
 
-          <DecisionSummary simulation={simulation} />
-          <MetricsCards simulation={simulation} highlighted={highlightedScenario} />
-          <InterventionPanel simulation={simulation} />
-          <ScenarioTable simulation={simulation} />
+          <DecisionSummary simulation={simulation} language={language} />
+          <MetricsCards
+            simulation={simulation}
+            highlighted={highlightedScenario}
+            language={language}
+          />
+          <InterventionPanel simulation={simulation} language={language} />
+          <ScenarioTable simulation={simulation} language={language} />
         </main>
       </div>
     </div>

@@ -1,4 +1,5 @@
-import type { Coordinates, RouteData } from "../types";
+import { getTexts } from "../i18n";
+import type { Coordinates, Language, RouteData } from "../types";
 
 type OsrmResponse = {
   code: string;
@@ -38,7 +39,7 @@ function toRouteData(route: OsrmResponse["routes"][number]): RouteData {
       .map((step) => ({
         distanceKm: Math.max(step.distance / 1000, 0),
         durationMin: Math.max(step.duration / 60, 0),
-        name: step.name || "Isimsiz yol",
+        name: step.name || "Unnamed road",
         geometry: compactGeometry(
           step.geometry.coordinates.map(([lon, lat]) => [lat, lon] as [number, number])
         )
@@ -55,8 +56,10 @@ function toRouteData(route: OsrmResponse["routes"][number]): RouteData {
 
 export async function fetchDrivingRoutes(
   start: Coordinates,
-  end: Coordinates
+  end: Coordinates,
+  language: Language = "en"
 ): Promise<RouteData[]> {
+  const errors = getTexts(language).errors;
   const url =
     `https://router.project-osrm.org/route/v1/driving/` +
     `${start.lon},${start.lat};${end.lon},${end.lat}` +
@@ -64,14 +67,13 @@ export async function fetchDrivingRoutes(
 
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error("OSM rota servisine baglanilamadi.");
+    throw new Error(errors.osmUnavailable);
   }
 
   const data = (await response.json()) as OsrmResponse;
   if (data.code !== "Ok" || !data.routes.length) {
-    throw new Error("Rota bulunamadi.");
+    throw new Error(errors.routeNotFound);
   }
 
   return data.routes.map(toRouteData);
 }
-

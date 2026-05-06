@@ -9,8 +9,10 @@ import {
   useMapEvents
 } from "react-leaflet";
 import L from "leaflet";
+import { getTexts } from "../i18n";
 import type {
   Coordinates,
+  Language,
   NewRoadTest,
   RouteData,
   ScenarioKey,
@@ -60,6 +62,7 @@ type Props = {
   activeScenarioKey: ScenarioKey | null;
   newRoad: NewRoadTest | null;
   trafficSignals: TrafficSignalPlacement[];
+  language: Language;
 };
 
 function Picker({ pickMode, onPick }: Pick<Props, "pickMode" | "onPick">) {
@@ -83,10 +86,12 @@ export function LeafletMap({
   alternativeRoute,
   activeScenarioKey,
   newRoad,
-  trafficSignals
+  trafficSignals,
+  language
 }: Props) {
   const defaultColor = activeScenarioKey ? colorByScenario[activeScenarioKey] : "#d61e35";
   const secondaryColor = "#2f2f2f";
+  const text = getTexts(language).map;
 
   useEffect(() => {
     document.querySelectorAll(".leaflet-control-attribution").forEach((node) => {
@@ -106,14 +111,14 @@ export function LeafletMap({
         {startPoint && (
           <Marker position={[startPoint.lat, startPoint.lon]} icon={startIcon}>
             <Tooltip permanent direction="top">
-              Başlangıç
+              {text.start}
             </Tooltip>
           </Marker>
         )}
         {endPoint && (
           <Marker position={[endPoint.lat, endPoint.lon]} icon={endIcon}>
             <Tooltip permanent direction="top">
-              Varış
+              {text.end}
             </Tooltip>
           </Marker>
         )}
@@ -144,7 +149,7 @@ export function LeafletMap({
             dashArray={newRoad.selectedMode === "cift_yonlu" ? undefined : "12 8"}
           >
             <Tooltip sticky>
-              Yeni yol: {newRoad.selectedMode === "cift_yonlu" ? "çift yönlü" : "tek yönlü"}
+              {text.newRoad}: {newRoad.selectedMode === "cift_yonlu" ? text.twoWay : text.oneWay}
             </Tooltip>
           </Polyline>
         )}
@@ -160,7 +165,7 @@ export function LeafletMap({
             weight={3}
           >
             <Tooltip permanent={signal.selected} direction="top">
-              Işık {index + 1}: {signal.improvementMinutes.toFixed(2)} dk
+              {text.signal} {index + 1}: {signal.improvementMinutes.toFixed(2)} {text.minuteShort}
             </Tooltip>
           </CircleMarker>
         ))}
@@ -168,13 +173,13 @@ export function LeafletMap({
 
       <div className="legend">
         <span>
-          <i className="dot green" /> Akıcı
+          <i className="dot green" /> {text.legendFree}
         </span>
         <span>
-          <i className="dot amber" /> Orta
+          <i className="dot amber" /> {text.legendModerate}
         </span>
         <span>
-          <i className="dot red" /> Yoğun
+          <i className="dot red" /> {text.legendHeavy}
         </span>
       </div>
     </section>

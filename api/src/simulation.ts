@@ -1,6 +1,7 @@
 import type {
   Coordinates,
   DirectionalitySummary,
+  Language,
   NewRoadTest,
   RoutePayload,
   ScenarioKey,
@@ -52,6 +53,115 @@ type AssignmentResult = {
 const BPR_ALPHA = 0.15;
 const BPR_BETA = 4;
 const ASSIGNMENT_ITERATIONS = 48;
+
+const apiText = {
+  en: {
+    model: "Directed graph + BPR cost function + Wardrop equilibrium assignment",
+    evidence: {
+      routes: (forward: number, reverse: number) =>
+        `${forward} forward route(s) and ${reverse} reverse route(s) were evaluated.`,
+      segments: (count: number) =>
+        `${count} road segment(s) were used for traffic assignment.`,
+      edges: (edges: number, oneWay: number) =>
+        `${edges} directed edge(s) were built; ${oneWay} edge(s) remained one-way.`,
+      newRoad: "The new road was tested separately as one-way and two-way.",
+      signals: "Traffic signal candidates were selected from the highest bottleneck nodes."
+    },
+    plain: {
+      braess: (title: string) =>
+        `Adding the new road increases average travel time instead of reducing congestion. Strongest recommendation: ${title}.`,
+      signal: (lat: string, lon: string) =>
+        `No Braess paradox was detected in this test. The clearest gain is signal control at ${lat}, ${lon}.`,
+      safe: (title: string) =>
+        `The new road did not destabilize the current balance. The best result appears in the ${title} scenario.`
+    },
+    scenarios: {
+      baselineTitle: "Current Network (Baseline)",
+      baselineNote:
+        "The current traffic balance was calculated on the directed network built from OSRM routes.",
+      oneWayTitle: "Add New Road (One-Way)",
+      oneWayBad:
+        "The new one-way connection attracted flow into a low-capacity shortcut.",
+      oneWayGood: "The one-way connection did not increase total travel time.",
+      twoWayTitle: "Add New Road (Two-Way)",
+      twoWayBad:
+        "The two-way connection affected demand in both directions and created Braess risk.",
+      twoWayGood: "The two-way connection did not disrupt the network balance.",
+      closureTitle: "Bottleneck Link Closed",
+      closureGood:
+        "Closing the overloaded low-efficiency link redistributed flow to alternative roads.",
+      closureNeutral: "The closure test did not find a safe improvement.",
+      signalTitle: "Smart Traffic Signal",
+      signalGood:
+        "Traffic signal candidates were tested at bottleneck nodes; the best candidate was selected.",
+      signalNeutral: "No strong bottleneck node was found for signal placement.",
+      emergencyTitle: "Emergency Vehicle Priority",
+      emergencyNote:
+        "Priority passage and reduced signal delay were tested on bottleneck links."
+    },
+    newRoad: {
+      braess:
+        "Braess paradox was detected because the new connection increased total travel time at Wardrop equilibrium.",
+      safe:
+        "The new connection tests did not raise total travel time above the baseline network."
+    }
+  },
+  tr: {
+    model: "Yönlü ağ + BPR maliyet fonksiyonu + Wardrop denge ataması",
+    evidence: {
+      routes: (forward: number, reverse: number) =>
+        `${forward} ileri rota ve ${reverse} geri yön rotası değerlendirildi.`,
+      segments: (count: number) =>
+        `${count} yol segmenti üzerinden akış ataması yapıldı.`,
+      edges: (edges: number, oneWay: number) =>
+        `${edges} yönlü kenar kuruldu; ${oneWay} kenar tek yönlü kaldı.`,
+      newRoad: "Yeni yol hem tek yönlü hem çift yönlü olarak ayrı ayrı test edildi.",
+      signals: "Trafik ışığı adayları en yoğun darboğaz düğümlerinden seçildi."
+    },
+    plain: {
+      braess: (title: string) =>
+        `Yeni yol eklemek bu ağda trafiği rahatlatmak yerine ortalama süreyi artırıyor. En güçlü öneri: ${title}.`,
+      signal: (lat: string, lon: string) =>
+        `Bu testte Braess paradoksu görünmedi. En anlaşılır kazanım, ${lat}, ${lon} noktasında trafik ışığı/sinyal düzenidir.`,
+      safe: (title: string) =>
+        `Bu testte yeni yol mevcut dengeyi bozmadı. En iyi sonuç ${title} senaryosunda görülüyor.`
+    },
+    scenarios: {
+      baselineTitle: "Mevcut Ağ (Referans)",
+      baselineNote:
+        "OSRM rotalarından kurulan yönlü ağ üzerinde mevcut akış dengesi hesaplandı.",
+      oneWayTitle: "Yeni Yol Ekle (Tek Yön)",
+      oneWayBad:
+        "Yeni bağlantı tek yönde cazip hale geldi ve akışı düşük kapasiteli bağlantıya çekti.",
+      oneWayGood: "Tek yönlü bağlantı mevcut ağda toplam süreyi artırmadı.",
+      twoWayTitle: "Yeni Yol Ekle (Çift Yön)",
+      twoWayBad:
+        "Çift yönlü bağlantı iki yöndeki talebi de etkileyerek Braess riski oluşturdu.",
+      twoWayGood: "Çift yönlü bağlantı ağ dengesini bozmadı.",
+      closureTitle: "Darboğaz Bağlantısı Kapatıldı",
+      closureGood:
+        "En yoğun düşük verimli bağlantı kapatılınca akış alternatif yollara dağıtıldı.",
+      closureNeutral: "Kapatma testi güvenli bir iyileştirme bulamadı.",
+      signalTitle: "Akıllı Trafik Işığı",
+      signalGood:
+        "Trafik ışığı adayları darboğaz düğümlerinde test edildi; en iyi aday seçildi.",
+      signalNeutral: "Işıklandırma için yeterli darboğaz düğümü bulunamadı.",
+      emergencyTitle: "Acil Araç Önceliği",
+      emergencyNote:
+        "Darboğaz bağlantılarında öncelikli geçiş ve sinyal gecikmesi azaltımı test edildi."
+    },
+    newRoad: {
+      braess:
+        "Yeni bağlantı Wardrop dengesinde toplam seyahat süresini artırdığı için Braess paradoksu tespit edildi.",
+      safe:
+        "Yeni bağlantı testlerinde toplam seyahat süresi referans ağın üzerine çıkmadı."
+    }
+  }
+} satisfies Record<Language, unknown>;
+
+function ui(language: Language) {
+  return apiText[language];
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -618,36 +728,42 @@ function confidencePercent(
 }
 
 function buildEvidence(
+  language: Language,
   forwardRoutes: RoutePayload[],
   reverseRoutes: RoutePayload[],
   graph: TrafficGraph,
   directionSummary: DirectionalitySummary
 ): string[] {
+  const text = ui(language).evidence;
   return [
-    `${forwardRoutes.length} ileri rota ve ${reverseRoutes.length} geri yön rotası değerlendirildi.`,
-    `${countSegments(forwardRoutes) + countSegments(reverseRoutes)} yol segmenti üzerinden akış ataması yapıldı.`,
-    `${graph.edges.size} yönlü kenar kuruldu; ${directionSummary.oneWayEdges} kenar tek yönlü kaldı.`,
-    "Yeni yol hem tek yönlü hem çift yönlü olarak ayrı ayrı test edildi.",
-    "Trafik ışığı adayları en yoğun darboğaz düğümlerinden seçildi."
+    text.routes(forwardRoutes.length, reverseRoutes.length),
+    text.segments(countSegments(forwardRoutes) + countSegments(reverseRoutes)),
+    text.edges(graph.edges.size, directionSummary.oneWayEdges),
+    text.newRoad,
+    text.signals
   ];
 }
 
 function plainLanguageSummary(
+  language: Language,
   braessDetected: boolean,
   recommended: ScenarioResult,
   signal: TrafficSignalPlacement | undefined
 ): string {
+  const text = ui(language).plain;
   if (braessDetected) {
-    return `Yeni yol eklemek bu ağda trafiği rahatlatmak yerine ortalama süreyi artırıyor. En güçlü öneri: ${recommended.title}.`;
+    return text.braess(recommended.title);
   }
 
   if (signal && signal.improvementMinutes > 0.1) {
-    return `Bu testte Braess paradoksu görünmedi. En anlaşılır kazanım, ${signal.location.lat.toFixed(5)}, ${signal.location.lon.toFixed(5)} noktasında trafik ışığı/sinyal düzenidir.`;
+    return text.signal(
+      signal.location.lat.toFixed(5),
+      signal.location.lon.toFixed(5)
+    );
   }
 
-  return `Bu testte yeni yol mevcut dengeyi bozmadı. En iyi sonuç ${recommended.title} senaryosunda görülüyor.`;
+  return text.safe(recommended.title);
 }
-
 function testTrafficSignals(
   baselineGraph: TrafficGraph,
   ods: OdDemand[],
@@ -708,6 +824,8 @@ function testBestClosure(
 }
 
 export function runSimulation(input: SimulationRequest): SimulationResponse {
+  const language = input.language ?? "en";
+  const text = ui(language);
   const forwardRoutes = normalizeRoutes(
     input.routeMeta.routes,
     input.start,
@@ -747,69 +865,65 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
   applyEmergencyPriority(emergencyGraph, baseline);
   const emergency = assignTraffic(emergencyGraph, ods);
 
+  const scenarioText = text.scenarios;
   const scenarios: ScenarioResult[] = [
     resultFromAssignment(
       "mevcut_ag",
-      "Mevcut Durum (Referans)",
+      scenarioText.baselineTitle,
       baseline,
       baseline.totalMinutes,
-      "OSRM rotalarından kurulan yönlü ağ üzerinde mevcut akış dengesi hesaplandı."
+      scenarioText.baselineNote
     ),
     resultFromAssignment(
       "yeni_yol_tek_yonlu",
-      "Yeni Yol Ekle (Tek Yön)",
+      scenarioText.oneWayTitle,
       oneWay,
       baseline.totalMinutes,
       oneWay.totalMinutes > baseline.totalMinutes
-        ? "Yeni bağlantı tek yönde cazip hale geldi ve akışı düşük kapasiteli bağlantıya çekti."
-        : "Tek yönlü bağlantı mevcut ağda toplam süreyi artırmadı.",
+        ? scenarioText.oneWayBad
+        : scenarioText.oneWayGood,
       `${candidate.from.lat.toFixed(5)}, ${candidate.from.lon.toFixed(5)} -> ${candidate.to.lat.toFixed(5)}, ${candidate.to.lon.toFixed(5)}`,
       "tek_yonlu"
     ),
     resultFromAssignment(
       "yeni_yol_cift_yonlu",
-      "Yeni Yol Ekle (Çift Yön)",
+      scenarioText.twoWayTitle,
       twoWay,
       baseline.totalMinutes,
       twoWay.totalMinutes > baseline.totalMinutes
-        ? "Çift yönlü bağlantı iki yöndeki talebi de etkileyerek Braess riski oluşturdu."
-        : "Çift yönlü bağlantı ağ dengesini bozmadı.",
+        ? scenarioText.twoWayBad
+        : scenarioText.twoWayGood,
       `${candidate.from.lat.toFixed(5)}, ${candidate.from.lon.toFixed(5)} <-> ${candidate.to.lat.toFixed(5)}, ${candidate.to.lon.toFixed(5)}`,
       "cift_yonlu"
     ),
     resultFromAssignment(
       "baglanti_yolu_kapat",
-      "Darboğaz Bağlantısı Kapatıldı",
+      scenarioText.closureTitle,
       closure.result,
       baseline.totalMinutes,
-      closure.closedEdge
-        ? "En yoğun düşük verimli bağlantı kapatılınca akış alternatif yollara dağıtıldı."
-        : "Kapatma testi güvenli bir iyileştirme bulamadı.",
+      closure.closedEdge ? scenarioText.closureGood : scenarioText.closureNeutral,
       closure.closedEdge
         ? `${baselineGraph.nodes.get(closure.closedEdge.from)?.coord.lat.toFixed(5)}, ${baselineGraph.nodes.get(closure.closedEdge.from)?.coord.lon.toFixed(5)} -> ${baselineGraph.nodes.get(closure.closedEdge.to)?.coord.lat.toFixed(5)}, ${baselineGraph.nodes.get(closure.closedEdge.to)?.coord.lon.toFixed(5)}`
         : undefined
     ),
     resultFromAssignment(
       "akilli_isiklandirma",
-      "Akıllı Trafik Işığı",
+      scenarioText.signalTitle,
       signalTest.best,
       baseline.totalMinutes,
-      signalTest.placements.length
-        ? "Trafik ışığı adayları darboğaz düğümlerinde test edildi; en iyi aday seçildi."
-        : "Işıklandırma için yeterli darboğaz düğümü bulunamadı.",
+      signalTest.placements.length ? scenarioText.signalGood : scenarioText.signalNeutral,
       signalTest.placements[0]
         ? `${signalTest.placements[0].location.lat.toFixed(5)}, ${signalTest.placements[0].location.lon.toFixed(5)}`
         : undefined
     ),
     resultFromAssignment(
       "acil_arac_onceligi",
-      "Acil Araç Önceliği",
+      scenarioText.emergencyTitle,
       emergency,
       baseline.totalMinutes,
-      "Darboğaz bağlantılarında öncelikli geçiş ve sinyal gecikmesi azaltımı test edildi."
+      scenarioText.emergencyNote
     )
   ];
-
   const baselineTotal = baseline.totalMinutes;
   const braessCandidates = scenarios.filter(
     (scenario) =>
@@ -837,9 +951,7 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
     selectedMode,
     selectedScenarioKey:
       selectedMode === "cift_yonlu" ? "yeni_yol_cift_yonlu" : "yeni_yol_tek_yonlu",
-    note: worstBraess
-      ? "Yeni bağlantı Wardrop dengesinde toplam seyahat süresini artırdığı için Braess paradoksu tespit edildi."
-      : "Yeni bağlantı testlerinde toplam seyahat süresi referans ağın üzerine çıkmadı."
+    note: worstBraess ? text.newRoad.braess : text.newRoad.safe
   };
   const directionSummary = directionality(baselineGraph);
   const selectedSignal = signalTest.placements.find((signal) => signal.selected);
@@ -851,7 +963,7 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
       distanceKm: round2(input.routeMeta.distanceKm),
       baseDurationMin: round2(input.routeMeta.durationMin),
       demandVehPerHour,
-      model: "Yönlü ağ + BPR maliyet fonksiyonu + Wardrop denge ataması",
+      model: text.model,
       confidencePercent: confidencePercent(
         baselineGraph,
         forwardRoutes,
@@ -859,11 +971,13 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
         baseline
       ),
       plainLanguage: plainLanguageSummary(
+        language,
         braessCandidates.length > 0,
         safeRecommended,
         selectedSignal
       ),
       evidence: buildEvidence(
+        language,
         forwardRoutes,
         reverseRoutes,
         baselineGraph,

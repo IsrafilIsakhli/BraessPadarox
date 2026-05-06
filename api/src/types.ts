@@ -3,6 +3,8 @@ export type Coordinates = {
   lon: number;
 };
 
+export type Language = "en" | "tr";
+
 export type StatusLevel = "Dusuk" | "Orta" | "Yuksek";
 
 export type ScenarioKey =
@@ -69,6 +71,7 @@ export type DirectionalitySummary = {
 };
 
 export type SimulationRequest = {
+  language?: Language;
   start: Coordinates;
   end: Coordinates;
   routeMeta: {

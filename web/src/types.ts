@@ -3,6 +3,10 @@ export type Coordinates = {
   lon: number;
 };
 
+export type Language = "en" | "tr";
+
+export type InfoPageKey = "documentation" | "methodology" | "about";
+
 export type StatusLevel = "Dusuk" | "Orta" | "Yuksek";
 
 export type ScenarioKey =
