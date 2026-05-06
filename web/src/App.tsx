@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ControlPanel } from "./components/ControlPanel";
 import { DecisionSummary } from "./components/DecisionSummary";
 import { InterventionPanel } from "./components/InterventionPanel";
+import { InfoPanel, type InfoPageKey } from "./components/InfoPanel";
 import { LeafletMap } from "./components/LeafletMap";
 import { MetricsCards } from "./components/MetricsCards";
 import { ScenarioTable } from "./components/ScenarioTable";
@@ -59,6 +60,7 @@ export default function App() {
   const [emergencyPriority, setEmergencyPriority] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activeInfoPage, setActiveInfoPage] = useState<InfoPageKey | null>(null);
 
   const [simulation, setSimulation] = useState<SimulationResponse | null>(null);
   const [baseRoute, setBaseRoute] = useState<RouteData | null>(null);
@@ -176,9 +178,27 @@ export default function App() {
       <header className="topbar">
         <div className="brand">Braess Paradoksu Analiz</div>
         <nav>
-          <a href="#">Dokümantasyon</a>
-          <a href="#">Metodoloji</a>
-          <a href="#">Hakkında</a>
+          <button
+            type="button"
+            className={activeInfoPage === "documentation" ? "active" : ""}
+            onClick={() => setActiveInfoPage("documentation")}
+          >
+            Dokümantasyon
+          </button>
+          <button
+            type="button"
+            className={activeInfoPage === "methodology" ? "active" : ""}
+            onClick={() => setActiveInfoPage("methodology")}
+          >
+            Metodoloji
+          </button>
+          <button
+            type="button"
+            className={activeInfoPage === "about" ? "active" : ""}
+            onClick={() => setActiveInfoPage("about")}
+          >
+            Hakkında
+          </button>
         </nav>
       </header>
 
@@ -206,6 +226,8 @@ export default function App() {
 
         <main className="main-panel">
           {errorMessage && <div className="error-banner">{errorMessage}</div>}
+
+          <InfoPanel activePage={activeInfoPage} onClose={() => setActiveInfoPage(null)} />
 
           <LeafletMap
             center={center}
