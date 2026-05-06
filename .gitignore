@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.local
+npm-debug.log*
+stitch_braess_review/
+*.tsbuildinfo
+web/vite.config.js
+web/vite.config.d.ts
