@@ -562,11 +562,36 @@ function routePointByFraction(route: RoutePayload, fraction: number): Coordinate
 
   for (let i = 1; i < points.length; i += 1) {
     const segment = haversineKm(points[i - 1], points[i]);
-    if (walked + segment >= target) return points[i];
+    if (walked + segment >= target) {
+      const ratio = clamp((target - walked) / Math.max(segment, 0.001), 0, 1);
+      return {
+        lat: points[i - 1].lat + (points[i].lat - points[i - 1].lat) * ratio,
+        lon: points[i - 1].lon + (points[i].lon - points[i - 1].lon) * ratio
+      };
+    }
     walked += segment;
   }
 
   return points[points.length - 1];
+}
+
+function nearestGraphNode(graph: TrafficGraph, point: Coordinates): NodeRecord | null {
+  let nearest: NodeRecord | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  graph.nodes.forEach((node) => {
+    const distance = haversineKm(point, node.coord);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      nearest = node;
+    }
+  });
+
+  return nearest;
+}
+
+function snapToGraph(graph: TrafficGraph, point: Coordinates): Coordinates {
+  return nearestGraphNode(graph, point)?.coord ?? point;
 }
 
 function chooseNewRoadCandidate(graph: TrafficGraph, routes: RoutePayload[]): {
@@ -575,17 +600,46 @@ function chooseNewRoadCandidate(graph: TrafficGraph, routes: RoutePayload[]): {
 } {
   const primary = routes[0];
   const alternative = routes[1] ?? routes[0];
-  let from = routePointByFraction(primary, 0.34);
-  let to = routePointByFraction(alternative, routes[1] ? 0.62 : 0.72);
+  const attempts: Array<[RoutePayload, number, RoutePayload, number]> = [
+    [primary, 0.34, alternative, routes[1] ? 0.62 : 0.72],
+    [primary, 0.25, alternative, routes[1] ? 0.75 : 0.82],
+    [primary, 0.18, primary, 0.66],
+    [primary, 0.42, primary, 0.86]
+  ];
 
-  if (coordId(from) === coordId(to)) {
-    from = routePointByFraction(primary, 0.25);
-    to = routePointByFraction(primary, 0.75);
+  let best: { from: Coordinates; to: Coordinates; score: number } | null = null;
+  for (const [fromRoute, fromFraction, toRoute, toFraction] of attempts) {
+    const from = snapToGraph(graph, routePointByFraction(fromRoute, fromFraction));
+    const to = snapToGraph(graph, routePointByFraction(toRoute, toFraction));
+    const fromId = coordId(from);
+    const toId = coordId(to);
+    if (fromId === toId) continue;
+
+    const lengthKm = haversineKm(from, to);
+    if (lengthKm < 0.18) continue;
+
+    const duplicatesExisting =
+      graph.edges.has(edgeId(fromId, toId)) || graph.edges.has(edgeId(toId, fromId));
+    const score = lengthKm - (duplicatesExisting ? 4 : 0);
+    if (!best || score > best.score) {
+      best = { from, to, score };
+    }
   }
 
-  addNode(graph, from);
-  addNode(graph, to);
-  return { from, to };
+  if (best) return { from: best.from, to: best.to };
+
+  const nodes = [...graph.nodes.values()];
+  if (nodes.length >= 2) {
+    return {
+      from: nodes[0].coord,
+      to: nodes[nodes.length - 1].coord
+    };
+  }
+
+  return {
+    from: routePointByFraction(primary, 0.25),
+    to: routePointByFraction(primary, 0.75)
+  };
 }
 
 function addCandidateRoad(
