@@ -4,8 +4,10 @@ import type { Coordinates, Language, ScenarioOption } from "../types";
 type Props = {
   startInput: string;
   endInput: string;
+  vehicleDemandInput: string;
   onStartInputChange: (value: string) => void;
   onEndInputChange: (value: string) => void;
+  onVehicleDemandInputChange: (value: string) => void;
   onApplyCoordinateInput: () => void;
   pickMode: "start" | "end" | null;
   setPickMode: (value: "start" | "end" | null) => void;
@@ -29,8 +31,10 @@ export function ControlPanel(props: Props) {
   const {
     startInput,
     endInput,
+    vehicleDemandInput,
     onStartInputChange,
     onEndInputChange,
+    onVehicleDemandInputChange,
     onApplyCoordinateInput,
     pickMode,
     setPickMode,
@@ -101,6 +105,20 @@ export function ControlPanel(props: Props) {
       <button type="button" className="apply-coord-btn" onClick={onApplyCoordinateInput}>
         {text.applyCoordinates}
       </button>
+
+      <div className="form-block">
+        <label>{text.vehicleDemandLabel}</label>
+        <input
+          type="number"
+          min={100}
+          max={12000}
+          step={50}
+          value={vehicleDemandInput}
+          onChange={(e) => onVehicleDemandInputChange(e.target.value)}
+          placeholder={text.vehicleDemandPlaceholder}
+        />
+        <p className="coord-label">{text.vehicleDemandHint}</p>
+      </div>
 
       <div className="form-block">
         <label>{text.scenarioSettings}</label>

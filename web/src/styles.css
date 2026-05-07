@@ -147,6 +147,7 @@ body {
 }
 
 .form-block input[type="text"],
+.form-block input[type="number"],
 .form-block input:not([type]) {
   width: 100%;
   padding: 10px 12px;

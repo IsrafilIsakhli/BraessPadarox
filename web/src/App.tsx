@@ -37,6 +37,16 @@ function parseCoordInput(value: string): Coordinates | null {
   return { lat, lon };
 }
 
+function parseDemandInput(value: string): number | undefined | null {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  const demand = Number(trimmed);
+  if (!Number.isFinite(demand)) return null;
+  if (demand < 100 || demand > 12000) return null;
+  return Math.round(demand);
+}
+
 function mapOptionToScenario(
   option: ScenarioOption,
   simulation: SimulationResponse | null
@@ -56,6 +66,7 @@ export default function App() {
   const [language, setLanguage] = useState<Language>("en");
   const [startInput, setStartInput] = useState("40.4206, 49.9187");
   const [endInput, setEndInput] = useState("40.4042, 49.8075");
+  const [vehicleDemandInput, setVehicleDemandInput] = useState("");
   const [startPoint, setStartPoint] = useState<Coordinates | null>(null);
   const [endPoint, setEndPoint] = useState<Coordinates | null>(null);
   const [pickMode, setPickMode] = useState<"start" | "end" | null>(null);
@@ -119,6 +130,7 @@ export default function App() {
   function resetAll() {
     setStartInput("40.4206, 49.9187");
     setEndInput("40.4042, 49.8075");
+    setVehicleDemandInput("");
     setStartPoint(null);
     setEndPoint(null);
     setPickMode(null);
@@ -143,9 +155,15 @@ export default function App() {
   async function handleAnalyze() {
     const start = startPoint ?? parseCoordInput(startInput);
     const end = endPoint ?? parseCoordInput(endInput);
+    const demandVehPerHour = parseDemandInput(vehicleDemandInput);
 
     if (!start || !end) {
       setErrorMessage(texts.errors.missingCoordinates);
+      return;
+    }
+
+    if (demandVehPerHour === null) {
+      setErrorMessage(texts.errors.invalidDemand);
       return;
     }
 
@@ -167,6 +185,7 @@ export default function App() {
 
       const response = await simulateBraess({
         language,
+        demandVehPerHour,
         start,
         end,
         routeMeta: {
@@ -233,8 +252,10 @@ export default function App() {
         <ControlPanel
           startInput={startInput}
           endInput={endInput}
+          vehicleDemandInput={vehicleDemandInput}
           onStartInputChange={setStartInput}
           onEndInputChange={setEndInput}
+          onVehicleDemandInputChange={setVehicleDemandInput}
           onApplyCoordinateInput={applyCoordinateInput}
           pickMode={pickMode}
           setPickMode={setPickMode}

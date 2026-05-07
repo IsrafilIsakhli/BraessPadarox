@@ -32,6 +32,9 @@ type TextBundle = {
     noStart: string;
     noEnd: string;
     applyCoordinates: string;
+    vehicleDemandLabel: string;
+    vehicleDemandPlaceholder: string;
+    vehicleDemandHint: string;
     scenarioSettings: string;
     scenarios: Record<ScenarioOption, string>;
     trafficLight: string;
@@ -48,6 +51,7 @@ type TextBundle = {
     apiNoResponse: string;
     osmUnavailable: string;
     routeNotFound: string;
+    invalidDemand: string;
   };
   map: {
     start: string;
@@ -166,6 +170,9 @@ export const translations: Record<Language, TextBundle> = {
       noStart: "No start point selected",
       noEnd: "No destination point selected",
       applyCoordinates: "Apply Lat/Lon Input",
+      vehicleDemandLabel: "TRAFFIC DEMAND",
+      vehicleDemandPlaceholder: "Auto, or vehicles/hour",
+      vehicleDemandHint: "Leave empty for automatic demand estimation.",
       scenarioSettings: "SCENARIO SETTINGS",
       scenarios: {
         mevcut_ag: "Current Network",
@@ -185,7 +192,8 @@ export const translations: Record<Language, TextBundle> = {
       apiConnection: "Could not connect to the simulation API. Please check Docker services.",
       apiNoResponse: "The simulation service did not respond.",
       osmUnavailable: "Could not connect to the OSM routing service.",
-      routeNotFound: "No driving route was found."
+      routeNotFound: "No driving route was found.",
+      invalidDemand: "Vehicle demand must be between 100 and 12000 vehicles/hour."
     },
     map: {
       start: "Start",
@@ -386,6 +394,9 @@ export const translations: Record<Language, TextBundle> = {
       noStart: "Seçili başlangıç yok",
       noEnd: "Seçili varış yok",
       applyCoordinates: "Lat/Lon Girişini Uygula",
+      vehicleDemandLabel: "TRAFİK TALEBİ",
+      vehicleDemandPlaceholder: "Otomatik veya araç/saat",
+      vehicleDemandHint: "Boş bırakırsanız talep otomatik tahmin edilir.",
       scenarioSettings: "SENARYO AYARLARI",
       scenarios: {
         mevcut_ag: "Mevcut Ağ",
@@ -406,7 +417,8 @@ export const translations: Record<Language, TextBundle> = {
         "Simülasyon API'sine bağlanılamadı. Docker servislerini kontrol edin.",
       apiNoResponse: "Simülasyon servisi yanıt vermedi.",
       osmUnavailable: "OSM rota servisine bağlanılamadı.",
-      routeNotFound: "Rota bulunamadı."
+      routeNotFound: "Rota bulunamadı.",
+      invalidDemand: "Araç talebi 100 ile 12000 araç/saat arasında olmalıdır."
     },
     map: {
       start: "Başlangıç",

@@ -87,6 +87,7 @@ export type DirectionalitySummary = {
 
 export type SimulationRequest = {
   language?: Language;
+  demandVehPerHour?: number;
   start: Coordinates;
   end: Coordinates;
   routeMeta: {

@@ -381,6 +381,10 @@ function buildRouteEdges(graph: TrafficGraph, routes: RoutePayload[], group: str
 }
 
 function estimateDemand(input: SimulationRequest): number {
+  if (input.demandVehPerHour !== undefined) {
+    return round2(clamp(input.demandVehPerHour, 100, 12000));
+  }
+
   const distanceKm = clamp(input.routeMeta.distanceKm, 0.4, 80);
   const speedKmh =
     input.routeMeta.distanceKm / Math.max(input.routeMeta.durationMin / 60, 0.02);
@@ -1280,7 +1284,10 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
     (a, b) => b.totalMinutes - a.totalMinutes
   )[0];
 
-  const recommended = [...scenarios]
+  const networkDecisionCandidates = scenarios.filter(
+    (scenario) => scenario.key !== "acil_arac_onceligi"
+  );
+  const recommended = [...networkDecisionCandidates]
     .filter((scenario) => Number.isFinite(scenario.totalMinutes))
     .sort((a, b) => a.totalMinutes - b.totalMinutes)[0];
   const safeRecommended = recommended ?? scenarios[0]!;

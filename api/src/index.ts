@@ -30,6 +30,7 @@ const routeSchema = z.object({
 
 const requestSchema = z.object({
   language: z.enum(["en", "tr"]).optional(),
+  demandVehPerHour: z.number().min(100).max(12000).optional(),
   start: z.object({
     lat: z.number().min(-90).max(90),
     lon: z.number().min(-180).max(180)
