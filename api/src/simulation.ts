@@ -51,9 +51,24 @@ type AssignmentResult = {
   feasible: boolean;
 };
 
+type RoadCandidate = {
+  from: Coordinates;
+  to: Coordinates;
+};
+
+type RoadCandidateEvaluation = RoadCandidate & {
+  oneWayMeta: { lengthKm: number; freeFlowMinutes: number };
+  twoWayMeta: { lengthKm: number; freeFlowMinutes: number };
+  oneWay: AssignmentResult;
+  twoWay: AssignmentResult;
+  riskDeltaMinutes: number;
+  bestTotalMinutes: number;
+};
+
 const BPR_ALPHA = 0.15;
 const BPR_BETA = 4;
 const ASSIGNMENT_ITERATIONS = 48;
+const BRAESS_THRESHOLD_MINUTES = 0.03;
 
 const apiText = {
   en: {
@@ -611,10 +626,7 @@ function snapToGraph(graph: TrafficGraph, point: Coordinates): Coordinates {
   return nearestGraphNode(graph, point)?.coord ?? point;
 }
 
-function chooseNewRoadCandidate(graph: TrafficGraph, routes: RoutePayload[]): {
-  from: Coordinates;
-  to: Coordinates;
-} {
+function generateNewRoadCandidates(graph: TrafficGraph, routes: RoutePayload[]): RoadCandidate[] {
   const primary = routes[0];
   const alternative = routes[1] ?? routes[0];
   const attempts: Array<[RoutePayload, number, RoutePayload, number]> = [
@@ -624,7 +636,18 @@ function chooseNewRoadCandidate(graph: TrafficGraph, routes: RoutePayload[]): {
     [primary, 0.42, primary, 0.86]
   ];
 
-  let best: { from: Coordinates; to: Coordinates; score: number } | null = null;
+  const fromFractions = [0.16, 0.25, 0.34, 0.43, 0.52];
+  const toFractions = [0.48, 0.58, 0.68, 0.78, 0.88];
+  for (const fromFraction of fromFractions) {
+    for (const toFraction of toFractions) {
+      if (!routes[1] && toFraction - fromFraction < 0.22) continue;
+      attempts.push([primary, fromFraction, alternative, toFraction]);
+    }
+  }
+
+  const candidates: RoadCandidate[] = [];
+  const seen = new Set<string>();
+  const maxCandidateLength = Math.max(primary.distanceKm * 0.72, 0.7);
   for (const [fromRoute, fromFraction, toRoute, toFraction] of attempts) {
     const from = snapToGraph(graph, routePointByFraction(fromRoute, fromFraction));
     const to = snapToGraph(graph, routePointByFraction(toRoute, toFraction));
@@ -634,29 +657,26 @@ function chooseNewRoadCandidate(graph: TrafficGraph, routes: RoutePayload[]): {
 
     const lengthKm = haversineKm(from, to);
     if (lengthKm < 0.18) continue;
+    if (lengthKm > maxCandidateLength) continue;
 
     const duplicatesExisting =
       graph.edges.has(edgeId(fromId, toId)) || graph.edges.has(edgeId(toId, fromId));
-    const score = lengthKm - (duplicatesExisting ? 4 : 0);
-    if (!best || score > best.score) {
-      best = { from, to, score };
-    }
+    if (duplicatesExisting && routes[1]) continue;
+
+    const key = [fromId, toId].sort().join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push({ from, to });
   }
 
-  if (best) return { from: best.from, to: best.to };
+  if (candidates.length > 0) {
+    return candidates;
+  }
 
   const nodes = [...graph.nodes.values()];
-  if (nodes.length >= 2) {
-    return {
-      from: nodes[0].coord,
-      to: nodes[nodes.length - 1].coord
-    };
-  }
+  if (nodes.length >= 2) return [{ from: nodes[0].coord, to: nodes[nodes.length - 1].coord }];
 
-  return {
-    from: routePointByFraction(primary, 0.25),
-    to: routePointByFraction(primary, 0.75)
-  };
+  return [{ from: routePointByFraction(primary, 0.25), to: routePointByFraction(primary, 0.75) }];
 }
 
 function addCandidateRoad(
@@ -694,6 +714,45 @@ function addCandidateRoad(
   }
 
   return { lengthKm, freeFlowMinutes };
+}
+
+function evaluateNewRoadCandidates(
+  baselineGraph: TrafficGraph,
+  routes: RoutePayload[],
+  ods: OdDemand[],
+  baseline: AssignmentResult
+): RoadCandidateEvaluation {
+  const candidates = generateNewRoadCandidates(baselineGraph, routes);
+  const evaluations = candidates.map((candidate) => {
+    const oneWayGraph = cloneGraph(baselineGraph);
+    const oneWayMeta = addCandidateRoad(oneWayGraph, candidate.from, candidate.to, false);
+    const oneWay = assignTraffic(oneWayGraph, ods);
+
+    const twoWayGraph = cloneGraph(baselineGraph);
+    const twoWayMeta = addCandidateRoad(twoWayGraph, candidate.from, candidate.to, true);
+    const twoWay = assignTraffic(twoWayGraph, ods);
+
+    return {
+      ...candidate,
+      oneWayMeta,
+      twoWayMeta,
+      oneWay,
+      twoWay,
+      riskDeltaMinutes: Math.max(oneWay.totalMinutes, twoWay.totalMinutes) - baseline.totalMinutes,
+      bestTotalMinutes: Math.min(oneWay.totalMinutes, twoWay.totalMinutes)
+    };
+  });
+
+  const feasible = evaluations.filter(
+    (candidate) => candidate.oneWay.feasible || candidate.twoWay.feasible
+  );
+  const pool = feasible.length ? feasible : evaluations;
+  const braessRisk = pool
+    .filter((candidate) => candidate.riskDeltaMinutes > BRAESS_THRESHOLD_MINUTES)
+    .sort((a, b) => b.riskDeltaMinutes - a.riskDeltaMinutes)[0];
+  if (braessRisk) return braessRisk;
+
+  return [...pool].sort((a, b) => a.bestTotalMinutes - b.bestTotalMinutes)[0] ?? evaluations[0];
 }
 
 function adjacentEdgeIds(graph: TrafficGraph, nodeId: string): string[] {
@@ -738,6 +797,34 @@ function signalCandidateScore(
     approaches,
     averageUtilization: adjacent.length ? utilizationSum / adjacent.length : 0
   };
+}
+
+function terminalNodeIds(ods: OdDemand[]): Set<string> {
+  const ids = new Set<string>();
+  ods.forEach((od) => {
+    ids.add(od.origin);
+    ids.add(od.destination);
+  });
+  return ids;
+}
+
+function isRouteTerminalCandidate(
+  graph: TrafficGraph,
+  ods: OdDemand[],
+  nodeId: string
+): boolean {
+  const node = graph.nodes.get(nodeId);
+  if (!node) return true;
+  const terminals = terminalNodeIds(ods);
+  if (terminals.has(nodeId)) return true;
+
+  for (const terminalId of terminals) {
+    const terminal = graph.nodes.get(terminalId);
+    if (!terminal) continue;
+    if (haversineKm(node.coord, terminal.coord) < 0.28) return true;
+  }
+
+  return false;
 }
 
 function applySignalAtNode(
@@ -1006,8 +1093,12 @@ function testTrafficSignals(
   for (const item of baseline.bottlenecks.slice(0, 12)) {
     const edge = baselineGraph.edges.get(item.edgeId);
     if (!edge) continue;
-    candidateIds.add(edge.from);
-    candidateIds.add(edge.to);
+    if (!isRouteTerminalCandidate(baselineGraph, ods, edge.from)) {
+      candidateIds.add(edge.from);
+    }
+    if (!isRouteTerminalCandidate(baselineGraph, ods, edge.to)) {
+      candidateIds.add(edge.to);
+    }
   }
 
   const uniqueCandidates = [...candidateIds]
@@ -1104,14 +1195,17 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
   const ods = createOds(forwardRoutes, reverseRoutes, demandVehPerHour);
   const baseline = assignTraffic(baselineGraph, ods);
 
-  const candidate = chooseNewRoadCandidate(baselineGraph, forwardRoutes);
-  const oneWayGraph = cloneGraph(baselineGraph);
-  const oneWayMeta = addCandidateRoad(oneWayGraph, candidate.from, candidate.to, false);
-  const oneWay = assignTraffic(oneWayGraph, ods);
-
-  const twoWayGraph = cloneGraph(baselineGraph);
-  const twoWayMeta = addCandidateRoad(twoWayGraph, candidate.from, candidate.to, true);
-  const twoWay = assignTraffic(twoWayGraph, ods);
+  const candidateTest = evaluateNewRoadCandidates(
+    baselineGraph,
+    forwardRoutes,
+    ods,
+    baseline
+  );
+  const candidate = { from: candidateTest.from, to: candidateTest.to };
+  const oneWayMeta = candidateTest.oneWayMeta;
+  const oneWay = candidateTest.oneWay;
+  const twoWayMeta = candidateTest.twoWayMeta;
+  const twoWay = candidateTest.twoWay;
 
   const closure = testBestClosure(baselineGraph, ods, baseline);
   const signalTest = testTrafficSignals(baselineGraph, ods, baseline, language);
@@ -1180,7 +1274,7 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
   const braessCandidates = scenarios.filter(
     (scenario) =>
       (scenario.key === "yeni_yol_tek_yonlu" || scenario.key === "yeni_yol_cift_yonlu") &&
-      scenario.totalMinutes > baselineTotal + 0.15
+      scenario.totalMinutes > baselineTotal + BRAESS_THRESHOLD_MINUTES
   );
   const worstBraess = [...braessCandidates].sort(
     (a, b) => b.totalMinutes - a.totalMinutes
