@@ -46,9 +46,24 @@ export type TrafficSignalPlacement = {
   id: string;
   location: Coordinates;
   affectedEdges: number;
+  controlledApproaches: number;
+  score: number;
+  queueReductionPercent: number;
   totalMinutes: number;
   improvementMinutes: number;
+  reason: string;
   selected: boolean;
+};
+
+export type EmergencyPriorityPlan = {
+  corridor: Coordinates[];
+  affectedEdges: number;
+  travelTimeWithoutPriority: number;
+  travelTimeWithPriority: number;
+  improvementMinutes: number;
+  signalDelayReductionPercent: number;
+  capacityBoostPercent: number;
+  note: string;
 };
 
 export type NewRoadTest = {
@@ -105,5 +120,6 @@ export type SimulationResponse = {
   interventions: {
     newRoad: NewRoadTest;
     trafficSignals: TrafficSignalPlacement[];
+    emergencyPriority: EmergencyPriorityPlan;
   };
 };

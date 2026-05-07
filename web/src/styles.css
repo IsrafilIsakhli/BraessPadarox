@@ -380,6 +380,10 @@ body {
   background: #dc2626;
 }
 
+.dot.black {
+  background: #111827;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr 1fr 1.5fr;
@@ -590,7 +594,7 @@ body {
 
 .intervention-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -646,6 +650,19 @@ body {
   font-weight: 700;
   text-align: right;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.compact-dl {
+  margin-bottom: 12px !important;
+}
+
+.emergency-card {
+  border-color: #1f2937;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.emergency-card h3 {
+  color: #111827;
 }
 
 .signal-list {

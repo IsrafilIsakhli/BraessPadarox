@@ -1,6 +1,7 @@
 import type {
   Coordinates,
   DirectionalitySummary,
+  EmergencyPriorityPlan,
   Language,
   NewRoadTest,
   RoutePayload,
@@ -104,6 +105,14 @@ const apiText = {
         "Braess paradox was detected because the new connection increased total travel time at Wardrop equilibrium.",
       safe:
         "The new connection tests did not raise total travel time above the baseline network."
+    },
+    signals: {
+      reason: (approaches: number, utilization: number) =>
+        `${approaches} controlled approach(es), average critical utilization ${utilization}%.`
+    },
+    emergency: {
+      note:
+        "The priority corridor was selected from the fastest emergency path and reinforced at the most congested links along that corridor."
     }
   },
   tr: {
@@ -155,6 +164,14 @@ const apiText = {
         "Yeni bağlantı Wardrop dengesinde toplam seyahat süresini artırdığı için Braess paradoksu tespit edildi.",
       safe:
         "Yeni bağlantı testlerinde toplam seyahat süresi referans ağın üzerine çıkmadı."
+    },
+    signals: {
+      reason: (approaches: number, utilization: number) =>
+        `${approaches} kontrollü yaklaşım, ortalama kritik kullanım %${utilization}.`
+    },
+    emergency: {
+      note:
+        "Öncelik koridoru en hızlı acil rota üzerinden seçildi ve bu koridordaki en yoğun bağlantılarda güçlendirildi."
     }
   }
 } satisfies Record<Language, unknown>;
@@ -679,25 +696,186 @@ function addCandidateRoad(
   return { lengthKm, freeFlowMinutes };
 }
 
-function applySignalAtNode(graph: TrafficGraph, nodeId: string): number {
-  let affected = 0;
-  graph.edges.forEach((edge) => {
-    if (edge.from === nodeId || edge.to === nodeId) {
-      edge.capacityVehPerHour *= 1.22;
-      edge.signalDelayMinutes = Math.max(0.01, edge.signalDelayMinutes - 0.08);
-      affected += 1;
-    }
+function adjacentEdgeIds(graph: TrafficGraph, nodeId: string): string[] {
+  const ids: string[] = [];
+  graph.edges.forEach((edge, id) => {
+    if (edge.from === nodeId || edge.to === nodeId) ids.push(id);
   });
+  return ids;
+}
+
+function criticalUtilization(result: AssignmentResult, edge: EdgeRecord): number {
+  return (result.flows.get(edge.id) ?? 0) / Math.max(edge.capacityVehPerHour, 1);
+}
+
+function signalCandidateScore(
+  graph: TrafficGraph,
+  baseline: AssignmentResult,
+  nodeId: string
+): { score: number; approaches: number; averageUtilization: number } {
+  const adjacent = adjacentEdgeIds(graph, nodeId)
+    .map((id) => graph.edges.get(id))
+    .filter((edge): edge is EdgeRecord => Boolean(edge));
+  if (adjacent.length < 2) {
+    return { score: 0, approaches: adjacent.length, averageUtilization: 0 };
+  }
+
+  let pressure = 0;
+  let utilizationSum = 0;
+  adjacent.forEach((edge) => {
+    const flow = baseline.flows.get(edge.id) ?? 0;
+    const utilization = criticalUtilization(baseline, edge);
+    const currentCost = baseline.costs.get(edge.id) ?? edge.freeFlowMinutes;
+    const queueDelay = Math.max(0, currentCost - edge.freeFlowMinutes);
+    pressure += flow * (0.6 + utilization) * (queueDelay + edge.signalDelayMinutes + 0.02);
+    utilizationSum += utilization;
+  });
+
+  const approaches = new Set(adjacent.map((edge) => edge.from === nodeId ? edge.to : edge.from)).size;
+  const degreeBonus = Math.min(approaches, 5) * 18;
+  return {
+    score: round2(pressure + degreeBonus),
+    approaches,
+    averageUtilization: adjacent.length ? utilizationSum / adjacent.length : 0
+  };
+}
+
+function applySignalAtNode(
+  graph: TrafficGraph,
+  nodeId: string,
+  baseline: AssignmentResult
+): {
+  affectedEdges: number;
+  controlledApproaches: number;
+  queueReductionPercent: number;
+  averageUtilization: number;
+} {
+  const adjacent = adjacentEdgeIds(graph, nodeId);
+  const approaches = new Set<string>();
+  let affectedEdges = 0;
+  let weightedReduction = 0;
+  let weightedFlow = 0;
+  let utilizationSum = 0;
+
+  for (const id of adjacent) {
+    const edge = graph.edges.get(id);
+    if (!edge) continue;
+    approaches.add(edge.from === nodeId ? edge.to : edge.from);
+
+    const utilization = criticalUtilization(baseline, edge);
+    const flow = baseline.flows.get(id) ?? 0;
+    utilizationSum += utilization;
+
+    const delayBefore = edge.signalDelayMinutes;
+    if (utilization >= 0.82) {
+      edge.capacityVehPerHour *= 1.22;
+      edge.signalDelayMinutes = Math.max(0.015, edge.signalDelayMinutes * 0.45);
+    } else if (utilization >= 0.55) {
+      edge.capacityVehPerHour *= 1.14;
+      edge.signalDelayMinutes = Math.max(0.02, edge.signalDelayMinutes * 0.62);
+    } else {
+      edge.capacityVehPerHour *= 1.05;
+      edge.signalDelayMinutes = Math.max(0.025, edge.signalDelayMinutes * 0.82);
+    }
+
+    weightedReduction += Math.max(0, delayBefore - edge.signalDelayMinutes) * Math.max(flow, 1);
+    weightedFlow += Math.max(flow, 1);
+    affectedEdges += 1;
+  }
+
+  return {
+    affectedEdges,
+    controlledApproaches: approaches.size,
+    queueReductionPercent: round2(
+      clamp((weightedReduction / Math.max(weightedFlow, 1)) * 900, 0, 45)
+    ),
+    averageUtilization: adjacent.length ? utilizationSum / adjacent.length : 0
+  };
+}
+
+function orderedCorridorFromPath(graph: TrafficGraph, pathEdges: string[]): Coordinates[] {
+  const points: Coordinates[] = [];
+  pathEdges.forEach((id, index) => {
+    const edge = graph.edges.get(id);
+    if (!edge) return;
+    const from = graph.nodes.get(edge.from)?.coord;
+    const to = graph.nodes.get(edge.to)?.coord;
+    if (index === 0 && from) points.push(from);
+    if (to) points.push(to);
+  });
+  return points;
+}
+
+function pathCost(graph: TrafficGraph, pathEdges: string[], costs: Map<string, number>): number {
+  return round2(
+    pathEdges.reduce((sum, id) => {
+      const edge = graph.edges.get(id);
+      if (!edge) return sum;
+      return sum + (costs.get(id) ?? edge.freeFlowMinutes + edge.signalDelayMinutes);
+    }, 0)
+  );
+}
+
+function applyEmergencyPriorityToEdges(graph: TrafficGraph, edgeIds: string[]): number {
+  let affected = 0;
+  for (const id of edgeIds) {
+    const edge = graph.edges.get(id);
+    if (!edge) continue;
+    edge.capacityVehPerHour *= 1.18;
+    edge.signalDelayMinutes = Math.max(0, edge.signalDelayMinutes * 0.28);
+    affected += 1;
+  }
   return affected;
 }
 
-function applyEmergencyPriority(graph: TrafficGraph, baseline: AssignmentResult): void {
-  for (const bottleneck of baseline.bottlenecks.slice(0, 8)) {
-    const edge = graph.edges.get(bottleneck.edgeId);
+function testEmergencyPriority(
+  baselineGraph: TrafficGraph,
+  ods: OdDemand[],
+  baseline: AssignmentResult,
+  language: Language
+): { result: AssignmentResult; plan: EmergencyPriorityPlan } {
+  const primaryOd = [...ods].sort((a, b) => b.demandVehPerHour - a.demandVehPerHour)[0];
+  const baselineCosts = baseline.costs.size ? baseline.costs : makeCostMap(baselineGraph, baseline.flows);
+  const path = primaryOd
+    ? shortestPath(baselineGraph, primaryOd.origin, primaryOd.destination, baselineCosts)
+    : null;
+  const pathEdges = path?.edges ?? baseline.bottlenecks.map((item) => item.edgeId).slice(0, 6);
+  const corridorSet = new Set(pathEdges);
+
+  for (const bottleneck of baseline.bottlenecks.slice(0, 6)) {
+    const edge = baselineGraph.edges.get(bottleneck.edgeId);
     if (!edge) continue;
-    edge.capacityVehPerHour *= 1.14;
-    edge.signalDelayMinutes = Math.max(0, edge.signalDelayMinutes - 0.06);
+    if (corridorSet.has(edge.id) || corridorSet.has(edgeId(edge.to, edge.from))) {
+      corridorSet.add(edge.id);
+    }
   }
+
+  const priorityEdges = [...corridorSet].filter((id) => baselineGraph.edges.has(id));
+  const emergencyGraph = cloneGraph(baselineGraph);
+  const affectedEdges = applyEmergencyPriorityToEdges(emergencyGraph, priorityEdges);
+  const result = assignTraffic(emergencyGraph, ods);
+  const afterCosts = result.costs.size ? result.costs : makeCostMap(emergencyGraph, result.flows);
+  const afterPath = primaryOd
+    ? shortestPath(emergencyGraph, primaryOd.origin, primaryOd.destination, afterCosts)
+    : null;
+  const afterEdges = afterPath?.edges ?? priorityEdges;
+  const corridor = orderedCorridorFromPath(baselineGraph, pathEdges.length ? pathEdges : afterEdges);
+  const travelTimeWithoutPriority = pathCost(baselineGraph, pathEdges, baselineCosts);
+  const travelTimeWithPriority = pathCost(emergencyGraph, afterEdges, afterCosts);
+
+  return {
+    result,
+    plan: {
+      corridor,
+      affectedEdges,
+      travelTimeWithoutPriority,
+      travelTimeWithPriority,
+      improvementMinutes: round2(Math.max(0, travelTimeWithoutPriority - travelTimeWithPriority)),
+      signalDelayReductionPercent: 72,
+      capacityBoostPercent: 18,
+      note: ui(language).emergency.note
+    }
+  };
 }
 
 function directionality(graph: TrafficGraph): DirectionalitySummary {
@@ -821,35 +999,58 @@ function plainLanguageSummary(
 function testTrafficSignals(
   baselineGraph: TrafficGraph,
   ods: OdDemand[],
-  baseline: AssignmentResult
+  baseline: AssignmentResult,
+  language: Language
 ): { placements: TrafficSignalPlacement[]; best: AssignmentResult; affected: number } {
-  const candidates = baseline.bottlenecks
-    .map((item) => baselineGraph.edges.get(item.edgeId)?.to)
-    .filter((id): id is string => Boolean(id));
-  const uniqueCandidates = [...new Set(candidates)].slice(0, 6);
+  const candidateIds = new Set<string>();
+  for (const item of baseline.bottlenecks.slice(0, 12)) {
+    const edge = baselineGraph.edges.get(item.edgeId);
+    if (!edge) continue;
+    candidateIds.add(edge.from);
+    candidateIds.add(edge.to);
+  }
 
-  const tests = uniqueCandidates.map((nodeId) => {
+  const uniqueCandidates = [...candidateIds]
+    .map((nodeId) => ({ nodeId, ...signalCandidateScore(baselineGraph, baseline, nodeId) }))
+    .filter((candidate) => candidate.approaches >= 2 && candidate.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+
+  const tests = uniqueCandidates.map((candidate) => {
     const graph = cloneGraph(baselineGraph);
-    const affected = applySignalAtNode(graph, nodeId);
+    const signal = applySignalAtNode(graph, candidate.nodeId, baseline);
     const result = assignTraffic(graph, ods);
-    return { nodeId, affected, result };
+    return { ...candidate, signal, result };
   });
 
-  tests.sort((a, b) => a.result.totalMinutes - b.result.totalMinutes);
-  const selected = tests[0];
-  const placements = tests.slice(0, 3).map((test, index) => ({
-    id: test.nodeId,
-    location: baselineGraph.nodes.get(test.nodeId)!.coord,
-    affectedEdges: test.affected,
-    totalMinutes: test.result.totalMinutes,
-    improvementMinutes: round2(baseline.totalMinutes - test.result.totalMinutes),
-    selected: index === 0
-  }));
+  tests.sort((a, b) => {
+    const improvementDelta =
+      (baseline.totalMinutes - b.result.totalMinutes) -
+      (baseline.totalMinutes - a.result.totalMinutes);
+    if (Math.abs(improvementDelta) > 0.01) return improvementDelta;
+    return b.score - a.score;
+  });
+  const selected = tests.find((test) => baseline.totalMinutes - test.result.totalMinutes > 0.03);
+  const placements = tests.slice(0, 4).map((test) => {
+    const utilizationPercent = Math.round(test.signal.averageUtilization * 100);
+    return {
+      id: test.nodeId,
+      location: baselineGraph.nodes.get(test.nodeId)!.coord,
+      affectedEdges: test.signal.affectedEdges,
+      controlledApproaches: test.signal.controlledApproaches,
+      score: round2(test.score),
+      queueReductionPercent: test.signal.queueReductionPercent,
+      totalMinutes: test.result.totalMinutes,
+      improvementMinutes: round2(baseline.totalMinutes - test.result.totalMinutes),
+      reason: ui(language).signals.reason(test.signal.controlledApproaches, utilizationPercent),
+      selected: selected?.nodeId === test.nodeId
+    };
+  });
 
   return {
     placements,
     best: selected?.result ?? baseline,
-    affected: selected?.affected ?? 0
+    affected: selected?.signal.affectedEdges ?? 0
   };
 }
 
@@ -913,11 +1114,8 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
   const twoWay = assignTraffic(twoWayGraph, ods);
 
   const closure = testBestClosure(baselineGraph, ods, baseline);
-  const signalTest = testTrafficSignals(baselineGraph, ods, baseline);
-
-  const emergencyGraph = cloneGraph(baselineGraph);
-  applyEmergencyPriority(emergencyGraph, baseline);
-  const emergency = assignTraffic(emergencyGraph, ods);
+  const signalTest = testTrafficSignals(baselineGraph, ods, baseline, language);
+  const emergencyTest = testEmergencyPriority(baselineGraph, ods, baseline, language);
 
   const scenarioText = text.scenarios;
   const scenarios: ScenarioResult[] = [
@@ -973,9 +1171,9 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
     resultFromAssignment(
       "acil_arac_onceligi",
       scenarioText.emergencyTitle,
-      emergency,
+      emergencyTest.result,
       baseline.totalMinutes,
-      scenarioText.emergencyNote
+      `${scenarioText.emergencyNote} ${emergencyTest.plan.note}`
     )
   ];
   const baselineTotal = baseline.totalMinutes;
@@ -1043,7 +1241,8 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
     recommended: safeRecommended,
     interventions: {
       newRoad,
-      trafficSignals: signalTest.placements
+      trafficSignals: signalTest.placements,
+      emergencyPriority: emergencyTest.plan
     }
   };
 }

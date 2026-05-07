@@ -56,10 +56,13 @@ type TextBundle = {
     twoWay: string;
     oneWay: string;
     signal: string;
+    approaches: string;
+    emergencyCorridor: string;
     minuteShort: string;
     legendFree: string;
     legendModerate: string;
     legendHeavy: string;
+    legendEmergency: string;
   };
   decision: {
     eyebrow: string;
@@ -97,6 +100,13 @@ type TextBundle = {
     noCandidate: string;
     bestCandidate: (lat: string, lon: string) => string;
     noSignalBody: string;
+    controlledApproaches: string;
+    queueReduction: string;
+    emergencyPriorityTest: string;
+    emergencyImprovement: (minutes: string) => string;
+    baseEta: string;
+    priorityEta: string;
+    affectedEdges: string;
     directionAnalysis: string;
     directedEdges: (count: number) => string;
     oneWay: string;
@@ -184,10 +194,13 @@ export const translations: Record<Language, TextBundle> = {
       twoWay: "two-way",
       oneWay: "one-way",
       signal: "Signal",
+      approaches: "approaches",
+      emergencyCorridor: "Emergency corridor",
       minuteShort: "min",
       legendFree: "Free Flow",
       legendModerate: "Moderate",
-      legendHeavy: "Heavy"
+      legendHeavy: "Heavy",
+      legendEmergency: "Emergency Priority"
     },
     decision: {
       eyebrow: "DECISION SUMMARY",
@@ -228,6 +241,13 @@ export const translations: Record<Language, TextBundle> = {
         `The best candidate was tested at ${lat}, ${lon}.`,
       noSignalBody:
         "Bottleneck intensity was not strong enough to justify signal placement.",
+      controlledApproaches: "Controlled approaches",
+      queueReduction: "Queue reduction",
+      emergencyPriorityTest: "EMERGENCY PRIORITY",
+      emergencyImprovement: (minutes) => `${minutes} min faster ETA`,
+      baseEta: "Base ETA",
+      priorityEta: "Priority ETA",
+      affectedEdges: "Affected edges",
       directionAnalysis: "DIRECTION ANALYSIS",
       directedEdges: (count) => `${count} directed edges`,
       oneWay: "One-way",
@@ -395,10 +415,13 @@ export const translations: Record<Language, TextBundle> = {
       twoWay: "çift yönlü",
       oneWay: "tek yönlü",
       signal: "Işık",
+      approaches: "yaklaşım",
+      emergencyCorridor: "Acil koridor",
       minuteShort: "dk",
       legendFree: "Akıcı",
       legendModerate: "Orta",
-      legendHeavy: "Yoğun"
+      legendHeavy: "Yoğun",
+      legendEmergency: "Acil Öncelik"
     },
     decision: {
       eyebrow: "KARAR ÖZETİ",
@@ -439,6 +462,13 @@ export const translations: Record<Language, TextBundle> = {
         `En iyi aday ${lat}, ${lon} noktasında test edildi.`,
       noSignalBody:
         "Darboğaz yoğunluğu ışık yerleşimi için yeterli sinyal vermedi.",
+      controlledApproaches: "Kontrollü yaklaşım",
+      queueReduction: "Kuyruk azalımı",
+      emergencyPriorityTest: "ACİL ARAÇ ÖNCELİĞİ",
+      emergencyImprovement: (minutes) => `${minutes} dk daha hızlı ETA`,
+      baseEta: "Normal ETA",
+      priorityEta: "Öncelikli ETA",
+      affectedEdges: "Etkilenen kenar",
       directionAnalysis: "YÖN ANALİZİ",
       directedEdges: (count) => `${count} yönlü kenar`,
       oneWay: "Tek yönlü",

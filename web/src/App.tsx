@@ -272,6 +272,9 @@ export default function App() {
             activeScenarioKey={activeScenarioKey}
             newRoad={simulation?.interventions.newRoad ?? null}
             trafficSignals={simulation?.interventions.trafficSignals ?? []}
+            emergencyPriorityPlan={simulation?.interventions.emergencyPriority ?? null}
+            showTrafficSignals={trafficLight}
+            showEmergencyPriority={emergencyPriority}
             language={language}
           />
 

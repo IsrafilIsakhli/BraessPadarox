@@ -11,7 +11,7 @@ export function InterventionPanel({ simulation, language }: Props) {
 
   const textBundle = getTexts(language);
   const text = textBundle.interventions;
-  const { newRoad, trafficSignals } = simulation.interventions;
+  const { newRoad, trafficSignals, emergencyPriority } = simulation.interventions;
   const selectedSignal = trafficSignals.find((signal) => signal.selected);
   const direction = textBundle.direction[newRoad.selectedMode];
 
@@ -58,17 +58,49 @@ export function InterventionPanel({ simulation, language }: Props) {
         ) : (
           <p>{text.noSignalBody}</p>
         )}
+        {selectedSignal && (
+          <dl className="compact-dl">
+            <div>
+              <dt>{text.controlledApproaches}</dt>
+              <dd>{selectedSignal.controlledApproaches}</dd>
+            </div>
+            <div>
+              <dt>{text.queueReduction}</dt>
+              <dd>%{Math.round(selectedSignal.queueReductionPercent)}</dd>
+            </div>
+          </dl>
+        )}
         <div className="signal-list">
           {trafficSignals.map((signal, index) => (
             <div key={signal.id} className={signal.selected ? "selected" : ""}>
               <strong>{index + 1}</strong>
-              <span>
+              <span title={signal.reason}>
                 {signal.location.lat.toFixed(5)}, {signal.location.lon.toFixed(5)}
               </span>
               <em>{signal.improvementMinutes.toFixed(2)} {textBundle.map.minuteShort}</em>
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="analysis-card emergency-card">
+        <span>{text.emergencyPriorityTest}</span>
+        <h3>{text.emergencyImprovement(emergencyPriority.improvementMinutes.toFixed(2))}</h3>
+        <p>{emergencyPriority.note}</p>
+        <dl>
+          <div>
+            <dt>{text.baseEta}</dt>
+            <dd>{emergencyPriority.travelTimeWithoutPriority.toFixed(2)} {textBundle.map.minuteShort}</dd>
+          </div>
+          <div>
+            <dt>{text.priorityEta}</dt>
+            <dd>{emergencyPriority.travelTimeWithPriority.toFixed(2)} {textBundle.map.minuteShort}</dd>
+          </div>
+          <div>
+            <dt>{text.affectedEdges}</dt>
+            <dd>{emergencyPriority.affectedEdges}</dd>
+          </div>
+        </dl>
       </div>
 
       <div className="analysis-card">

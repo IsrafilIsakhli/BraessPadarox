@@ -12,6 +12,7 @@ import L from "leaflet";
 import { getTexts } from "../i18n";
 import type {
   Coordinates,
+  EmergencyPriorityPlan,
   Language,
   NewRoadTest,
   RouteData,
@@ -62,6 +63,9 @@ type Props = {
   activeScenarioKey: ScenarioKey | null;
   newRoad: NewRoadTest | null;
   trafficSignals: TrafficSignalPlacement[];
+  emergencyPriorityPlan: EmergencyPriorityPlan | null;
+  showTrafficSignals: boolean;
+  showEmergencyPriority: boolean;
   language: Language;
 };
 
@@ -87,6 +91,9 @@ export function LeafletMap({
   activeScenarioKey,
   newRoad,
   trafficSignals,
+  emergencyPriorityPlan,
+  showTrafficSignals,
+  showEmergencyPriority,
   language
 }: Props) {
   const defaultColor = activeScenarioKey ? colorByScenario[activeScenarioKey] : "#d61e35";
@@ -154,18 +161,34 @@ export function LeafletMap({
           </Polyline>
         )}
 
-        {trafficSignals.map((signal, index) => (
+        {showEmergencyPriority && emergencyPriorityPlan?.corridor.length ? (
+          <Polyline
+            positions={emergencyPriorityPlan.corridor.map((point) => [point.lat, point.lon])}
+            color="#111827"
+            weight={8}
+            opacity={0.88}
+            dashArray="3 10"
+          >
+            <Tooltip sticky>
+              {text.emergencyCorridor}: {emergencyPriorityPlan.improvementMinutes.toFixed(2)}{" "}
+              {text.minuteShort}
+            </Tooltip>
+          </Polyline>
+        ) : null}
+
+        {showTrafficSignals && trafficSignals.map((signal, index) => (
           <CircleMarker
             key={signal.id}
             center={[signal.location.lat, signal.location.lon]}
-            radius={signal.selected ? 10 : 7}
+            radius={signal.selected ? 12 : 8}
             color={signal.selected ? "#059669" : "#0f766e"}
             fillColor={signal.selected ? "#10b981" : "#99f6e4"}
-            fillOpacity={0.9}
+            fillOpacity={signal.selected ? 0.9 : 0.62}
             weight={3}
           >
             <Tooltip permanent={signal.selected} direction="top">
-              {text.signal} {index + 1}: {signal.improvementMinutes.toFixed(2)} {text.minuteShort}
+              {text.signal} {index + 1}: {signal.improvementMinutes.toFixed(2)}{" "}
+              {text.minuteShort} · {signal.controlledApproaches} {text.approaches}
             </Tooltip>
           </CircleMarker>
         ))}
@@ -180,6 +203,9 @@ export function LeafletMap({
         </span>
         <span>
           <i className="dot red" /> {text.legendHeavy}
+        </span>
+        <span>
+          <i className="dot black" /> {text.legendEmergency}
         </span>
       </div>
     </section>
