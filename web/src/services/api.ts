@@ -14,6 +14,11 @@ type SimulateParams = {
     alternativeDurationMin?: number;
     routes: RouteData[];
     reverseRoutes: RouteData[];
+    candidateConnector?: {
+      from: Coordinates;
+      to: Coordinates;
+      route: RouteData;
+    };
   };
   toggles: {
     trafficLight: boolean;

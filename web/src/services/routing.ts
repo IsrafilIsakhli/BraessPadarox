@@ -18,6 +18,18 @@ type OsrmResponse = {
   }>;
 };
 
+const routeCache = new Map<string, Promise<RouteData[]>>();
+
+function routeCacheKey(start: Coordinates, end: Coordinates, language: Language): string {
+  return [
+    language,
+    start.lat.toFixed(6),
+    start.lon.toFixed(6),
+    end.lat.toFixed(6),
+    end.lon.toFixed(6)
+  ].join("|");
+}
+
 function compactGeometry(points: [number, number][], maxPoints = 24): [number, number][] {
   if (points.length <= maxPoints) return points;
 
@@ -58,6 +70,23 @@ export async function fetchDrivingRoutes(
   start: Coordinates,
   end: Coordinates,
   language: Language = "en"
+): Promise<RouteData[]> {
+  const cacheKey = routeCacheKey(start, end, language);
+  const cached = routeCache.get(cacheKey);
+  if (cached) return cached;
+
+  const request = fetchDrivingRoutesFromOsrm(start, end, language).catch((error) => {
+    routeCache.delete(cacheKey);
+    throw error;
+  });
+  routeCache.set(cacheKey, request);
+  return request;
+}
+
+async function fetchDrivingRoutesFromOsrm(
+  start: Coordinates,
+  end: Coordinates,
+  language: Language
 ): Promise<RouteData[]> {
   const errors = getTexts(language).errors;
   const url =

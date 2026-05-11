@@ -76,6 +76,8 @@ type RoadCandidateEvaluation = RoadCandidate & {
 const BPR_ALPHA = 0.15;
 const BPR_BETA = 4;
 const ASSIGNMENT_ITERATIONS = 48;
+const ASSIGNMENT_MIN_ITERATIONS = 24;
+const ASSIGNMENT_CONVERGENCE_TOLERANCE = 0.0008;
 const BRAESS_THRESHOLD_MINUTES = 0.03;
 
 const apiText = {
@@ -490,6 +492,8 @@ function assignTraffic(graph: TrafficGraph, ods: OdDemand[]): AssignmentResult {
     };
   }
 
+  const totalActiveDemand = activeOds.reduce((sum, od) => sum + od.demandVehPerHour, 0);
+
   for (let iteration = 1; iteration <= ASSIGNMENT_ITERATIONS; iteration += 1) {
     const costs = makeCostMap(graph, flows);
     const auxiliary = new Map<string, number>();
@@ -515,15 +519,28 @@ function assignTraffic(graph: TrafficGraph, ods: OdDemand[]): AssignmentResult {
     }
 
     const step = 1 / iteration;
+    let maxRelativeChange = 0;
     graph.edges.forEach((_edge, id) => {
       const current = flows.get(id) ?? 0;
       const target = auxiliary.get(id) ?? 0;
-      flows.set(id, current + step * (target - current));
+      const next = current + step * (target - current);
+      maxRelativeChange = Math.max(
+        maxRelativeChange,
+        Math.abs(next - current) / Math.max(totalActiveDemand, 1)
+      );
+      flows.set(id, next);
     });
+
+    if (
+      iteration >= ASSIGNMENT_MIN_ITERATIONS &&
+      maxRelativeChange < ASSIGNMENT_CONVERGENCE_TOLERANCE
+    ) {
+      break;
+    }
   }
 
   const costs = makeCostMap(graph, flows);
-  const totalDemand = activeOds.reduce((sum, od) => sum + od.demandVehPerHour, 0);
+  const totalDemand = totalActiveDemand;
   let vehicleMinutes = 0;
   let freeFlowVehicleMinutes = 0;
   let utilizationWeighted = 0;

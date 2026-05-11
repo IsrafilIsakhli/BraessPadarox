@@ -100,6 +100,7 @@ export default function App() {
       simulation.scenarios.find((s) => s.key === scenarioKey) ?? simulation.scenarios[0] ?? null
     );
   }, [simulation, selectedScenario]);
+  const activeScenarioKey: ScenarioKey | null = highlightedScenario?.key ?? null;
 
   function applyCoordinateInput() {
     const parsedStart = parseCoordInput(startInput);
@@ -169,13 +170,17 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const routes = await fetchDrivingRoutes(start, end, language);
-      let reverseRoutes: RouteData[] = [];
-      try {
-        reverseRoutes = await fetchDrivingRoutes(end, start, language);
-      } catch {
-        reverseRoutes = [];
+      const [forwardResult, reverseResult] = await Promise.allSettled([
+        fetchDrivingRoutes(start, end, language),
+        fetchDrivingRoutes(end, start, language)
+      ]);
+
+      if (forwardResult.status === "rejected") {
+        throw forwardResult.reason;
       }
+
+      const routes = forwardResult.value;
+      const reverseRoutes = reverseResult.status === "fulfilled" ? reverseResult.value : [];
       const [primaryRoute, altRoute] = routes;
 
       setBaseRoute(primaryRoute);
@@ -316,6 +321,7 @@ export default function App() {
             onPick={handlePick}
             baseRoute={baseRoute}
             alternativeRoute={alternativeRoute}
+            activeScenarioKey={activeScenarioKey}
             newRoad={simulation?.interventions.newRoad ?? null}
             trafficSignals={simulation?.interventions.trafficSignals ?? []}
             emergencyPriorityPlan={simulation?.interventions.emergencyPriority ?? null}
