@@ -69,6 +69,8 @@ export type EmergencyPriorityPlan = {
 export type NewRoadTest = {
   from: Coordinates;
   to: Coordinates;
+  geometry: [number, number][];
+  geometrySource: "straight_candidate" | "road_matched";
   lengthKm: number;
   freeFlowMinutes: number;
   oneWayTotalMinutes: number;
@@ -96,6 +98,11 @@ export type SimulationRequest = {
     alternativeDurationMin?: number;
     routes?: RoutePayload[];
     reverseRoutes?: RoutePayload[];
+    candidateConnector?: {
+      from: Coordinates;
+      to: Coordinates;
+      route: RoutePayload;
+    };
   };
   toggles?: {
     trafficLight?: boolean;

@@ -54,11 +54,19 @@ type AssignmentResult = {
 type RoadCandidate = {
   from: Coordinates;
   to: Coordinates;
+  connectorRoute?: RoutePayload;
+};
+
+type CandidateRoadMeta = {
+  lengthKm: number;
+  freeFlowMinutes: number;
+  geometry: [number, number][];
+  geometrySource: "straight_candidate" | "road_matched";
 };
 
 type RoadCandidateEvaluation = RoadCandidate & {
-  oneWayMeta: { lengthKm: number; freeFlowMinutes: number };
-  twoWayMeta: { lengthKm: number; freeFlowMinutes: number };
+  oneWayMeta: CandidateRoadMeta;
+  twoWayMeta: CandidateRoadMeta;
   oneWay: AssignmentResult;
   twoWay: AssignmentResult;
   riskDeltaMinutes: number;
@@ -630,7 +638,44 @@ function snapToGraph(graph: TrafficGraph, point: Coordinates): Coordinates {
   return nearestGraphNode(graph, point)?.coord ?? point;
 }
 
-function generateNewRoadCandidates(graph: TrafficGraph, routes: RoutePayload[]): RoadCandidate[] {
+function routeMatchedGeometry(candidate: RoadCandidate): [number, number][] {
+  if (!candidate.connectorRoute?.geometry.length) {
+    return [
+      [candidate.from.lat, candidate.from.lon],
+      [candidate.to.lat, candidate.to.lon]
+    ];
+  }
+
+  const geometry = [...candidate.connectorRoute.geometry];
+  const first = geometry[0];
+  const last = geometry[geometry.length - 1];
+
+  if (!first || haversineKm({ lat: first[0], lon: first[1] }, candidate.from) > 0.035) {
+    geometry.unshift([candidate.from.lat, candidate.from.lon]);
+  }
+
+  if (!last || haversineKm({ lat: last[0], lon: last[1] }, candidate.to) > 0.035) {
+    geometry.push([candidate.to.lat, candidate.to.lon]);
+  }
+
+  return geometry;
+}
+
+function generateNewRoadCandidates(
+  graph: TrafficGraph,
+  routes: RoutePayload[],
+  connector?: SimulationRequest["routeMeta"]["candidateConnector"]
+): RoadCandidate[] {
+  if (connector?.route.geometry.length) {
+    return [
+      {
+        from: snapToGraph(graph, connector.from),
+        to: snapToGraph(graph, connector.to),
+        connectorRoute: connector.route
+      }
+    ];
+  }
+
   const primary = routes[0];
   const alternative = routes[1] ?? routes[0];
   const attempts: Array<[RoutePayload, number, RoutePayload, number]> = [
@@ -685,15 +730,23 @@ function generateNewRoadCandidates(graph: TrafficGraph, routes: RoutePayload[]):
 
 function addCandidateRoad(
   graph: TrafficGraph,
-  from: Coordinates,
-  to: Coordinates,
+  candidate: RoadCandidate,
   bidirectional: boolean
-): { lengthKm: number; freeFlowMinutes: number } {
+): CandidateRoadMeta {
+  const { from, to } = candidate;
   const fromId = addNode(graph, from);
   const toId = addNode(graph, to);
-  const lengthKm = Math.max(haversineKm(from, to), 0.08);
-  const freeFlowMinutes = (lengthKm / 52) * 60;
-  const capacityVehPerHour = clamp(360 + lengthKm * 120, 360, 720);
+  const directLengthKm = Math.max(haversineKm(from, to), 0.08);
+  const hasRoadMatchedConnector = Boolean(candidate.connectorRoute?.geometry.length);
+  const lengthKm = hasRoadMatchedConnector
+    ? Math.max(candidate.connectorRoute?.distanceKm ?? directLengthKm, directLengthKm)
+    : directLengthKm;
+  const freeFlowMinutes = hasRoadMatchedConnector
+    ? Math.max(candidate.connectorRoute?.durationMin ?? 0, (lengthKm / 58) * 60)
+    : (lengthKm / 52) * 60;
+  const capacityVehPerHour = hasRoadMatchedConnector
+    ? clamp(420 + lengthKm * 130, 420, 900)
+    : clamp(360 + lengthKm * 120, 360, 720);
 
   addEdge(graph, {
     from: fromId,
@@ -717,23 +770,29 @@ function addCandidateRoad(
     });
   }
 
-  return { lengthKm, freeFlowMinutes };
+  return {
+    lengthKm,
+    freeFlowMinutes,
+    geometry: routeMatchedGeometry(candidate),
+    geometrySource: hasRoadMatchedConnector ? "road_matched" : "straight_candidate"
+  };
 }
 
 function evaluateNewRoadCandidates(
   baselineGraph: TrafficGraph,
   routes: RoutePayload[],
   ods: OdDemand[],
-  baseline: AssignmentResult
+  baseline: AssignmentResult,
+  connector?: SimulationRequest["routeMeta"]["candidateConnector"]
 ): RoadCandidateEvaluation {
-  const candidates = generateNewRoadCandidates(baselineGraph, routes);
+  const candidates = generateNewRoadCandidates(baselineGraph, routes, connector);
   const evaluations = candidates.map((candidate) => {
     const oneWayGraph = cloneGraph(baselineGraph);
-    const oneWayMeta = addCandidateRoad(oneWayGraph, candidate.from, candidate.to, false);
+    const oneWayMeta = addCandidateRoad(oneWayGraph, candidate, false);
     const oneWay = assignTraffic(oneWayGraph, ods);
 
     const twoWayGraph = cloneGraph(baselineGraph);
-    const twoWayMeta = addCandidateRoad(twoWayGraph, candidate.from, candidate.to, true);
+    const twoWayMeta = addCandidateRoad(twoWayGraph, candidate, true);
     const twoWay = assignTraffic(twoWayGraph, ods);
 
     return {
@@ -1203,7 +1262,8 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
     baselineGraph,
     forwardRoutes,
     ods,
-    baseline
+    baseline,
+    input.routeMeta.candidateConnector
   );
   const candidate = { from: candidateTest.from, to: candidateTest.to };
   const oneWayMeta = candidateTest.oneWayMeta;
@@ -1294,11 +1354,14 @@ export function runSimulation(input: SimulationRequest): SimulationResponse {
 
   const selectedMode =
     twoWay.totalMinutes <= oneWay.totalMinutes ? "cift_yonlu" : "tek_yonlu";
+  const selectedRoadMeta = selectedMode === "cift_yonlu" ? twoWayMeta : oneWayMeta;
   const newRoad: NewRoadTest = {
     from: candidate.from,
     to: candidate.to,
-    lengthKm: round2(oneWayMeta.lengthKm || twoWayMeta.lengthKm),
-    freeFlowMinutes: round2(oneWayMeta.freeFlowMinutes || twoWayMeta.freeFlowMinutes),
+    geometry: selectedRoadMeta.geometry,
+    geometrySource: selectedRoadMeta.geometrySource,
+    lengthKm: round2(selectedRoadMeta.lengthKm),
+    freeFlowMinutes: round2(selectedRoadMeta.freeFlowMinutes),
     oneWayTotalMinutes: round2(oneWay.totalMinutes),
     twoWayTotalMinutes: round2(twoWay.totalMinutes),
     selectedMode,

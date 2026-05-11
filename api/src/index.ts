@@ -44,7 +44,20 @@ const requestSchema = z.object({
     durationMin: z.number().positive(),
     alternativeDurationMin: z.number().positive().optional(),
     routes: z.array(routeSchema).optional(),
-    reverseRoutes: z.array(routeSchema).optional()
+    reverseRoutes: z.array(routeSchema).optional(),
+    candidateConnector: z
+      .object({
+        from: z.object({
+          lat: z.number().min(-90).max(90),
+          lon: z.number().min(-180).max(180)
+        }),
+        to: z.object({
+          lat: z.number().min(-90).max(90),
+          lon: z.number().min(-180).max(180)
+        }),
+        route: routeSchema
+      })
+      .optional()
   }),
   toggles: z
     .object({

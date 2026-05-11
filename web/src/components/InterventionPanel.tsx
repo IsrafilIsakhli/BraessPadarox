@@ -21,6 +21,11 @@ export function InterventionPanel({ simulation, language }: Props) {
         <span>{text.newRoadTest}</span>
         <h3>{text.roadSelected(direction)}</h3>
         <p>{newRoad.note}</p>
+        <p className="map-evidence-note">
+          {newRoad.geometrySource === "road_matched"
+            ? textBundle.map.roadMatched
+            : textBundle.map.straightCandidate}
+        </p>
         <dl>
           <div>
             <dt>{text.start}</dt>

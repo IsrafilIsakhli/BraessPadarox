@@ -336,29 +336,44 @@ body {
 
 .map-card {
   position: relative;
-  height: clamp(560px, 66vh, 760px);
   border: 1px solid #d8dce8;
   border-radius: 10px;
   overflow: hidden;
-  background: #f1f2f7;
+  background: #ffffff;
 }
 
 .map-container {
   width: 100%;
-  height: 100%;
+  height: clamp(560px, 66vh, 760px);
+}
+
+.leaflet-tooltip.new-road-tooltip {
+  background: #fff7ed;
+  border: 2px solid #f97316;
+  border-radius: 999px;
+  box-shadow: 0 10px 24px rgba(124, 45, 18, 0.28);
+  color: #7c2d12;
+  font-weight: 800;
+  padding: 7px 12px;
 }
 
 .legend {
-  position: absolute;
-  right: 16px;
-  bottom: 16px;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid #e0e3ef;
-  border-radius: 10px;
-  padding: 8px 10px;
+  background: #ffffff;
+  border-top: 1px solid #e0e3ef;
+  padding: 10px 14px;
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
+  justify-content: center;
   font-size: 13px;
+  width: 100%;
+}
+
+.legend span {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .dot {
@@ -383,6 +398,48 @@ body {
 
 .dot.black {
   background: #111827;
+}
+
+.legend-line {
+  border-radius: 999px;
+  display: inline-block;
+  height: 4px;
+  width: 34px;
+}
+
+.legend-line.main-route {
+  background: #2563eb;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.legend-line.alternative-route {
+  background: repeating-linear-gradient(
+    90deg,
+    #0891b2 0 10px,
+    transparent 10px 18px
+  );
+}
+
+.legend-line.new-road {
+  background: #f97316;
+  box-shadow: 0 0 0 2px rgba(67, 20, 7, 0.35);
+}
+
+.legend-line.emergency-route {
+  background: repeating-linear-gradient(
+    90deg,
+    #111827 0 5px,
+    #facc15 5px 12px
+  );
+}
+
+.legend-signal {
+  background: #10b981;
+  border: 2px solid #047857;
+  border-radius: 50%;
+  display: inline-block;
+  height: 12px;
+  width: 12px;
 }
 
 .card-grid {
@@ -627,6 +684,16 @@ body {
   line-height: 1.45;
 }
 
+.analysis-card .map-evidence-note {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  color: #9a3412;
+  font-weight: 700;
+  margin-top: -4px;
+  padding: 8px 10px;
+}
+
 .analysis-card dl {
   display: grid;
   gap: 8px;
@@ -727,13 +794,20 @@ body {
   gap: 8px;
 }
 
+.export-buttons a,
 .export-buttons button {
   border: 1px solid #c6cbda;
   background: white;
   border-radius: 8px;
+  color: #0f172a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 7px 12px;
   font-weight: 600;
   cursor: pointer;
+  min-height: 34px;
+  text-decoration: none;
 }
 
 .export-buttons .html-btn {
@@ -838,7 +912,7 @@ tbody tr.highlight {
     grid-template-columns: 1fr;
   }
 
-  .map-card {
+  .map-container {
     height: 520px;
   }
 

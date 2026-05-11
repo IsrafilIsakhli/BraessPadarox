@@ -57,12 +57,22 @@ type TextBundle = {
     start: string;
     end: string;
     newRoad: string;
+    newRoadPlanned: string;
+    newRoadFrom: string;
+    newRoadTo: string;
+    alternativeRoute: string;
     twoWay: string;
     oneWay: string;
+    roadMatched: string;
+    straightCandidate: string;
     signal: string;
     approaches: string;
     emergencyCorridor: string;
     minuteShort: string;
+    legendMainRoute: string;
+    legendAlternativeRoute: string;
+    legendNewRoad: string;
+    legendTrafficSignal: string;
     legendFree: string;
     legendModerate: string;
     legendHeavy: string;
@@ -199,12 +209,22 @@ export const translations: Record<Language, TextBundle> = {
       start: "Start",
       end: "Destination",
       newRoad: "New road",
+      newRoadPlanned: "New road will be added here",
+      newRoadFrom: "New-road start",
+      newRoadTo: "New-road end",
+      alternativeRoute: "Alternative route on existing roads",
       twoWay: "two-way",
       oneWay: "one-way",
+      roadMatched: "matched to OSM roads",
+      straightCandidate: "engineering shortcut candidate",
       signal: "Signal",
       approaches: "approaches",
       emergencyCorridor: "Emergency corridor",
       minuteShort: "min",
+      legendMainRoute: "Main route",
+      legendAlternativeRoute: "Alternative route",
+      legendNewRoad: "Tested new/alternative link",
+      legendTrafficSignal: "Traffic signal candidate",
       legendFree: "Free Flow",
       legendModerate: "Moderate",
       legendHeavy: "Heavy",
@@ -306,9 +326,10 @@ export const translations: Record<Language, TextBundle> = {
             title: "Map markers",
             items: [
               "The green marker shows the start point; the red marker shows the destination.",
-              "The thick route line represents the active scenario route.",
-              "The orange line shows the candidate new-road connection.",
-              "Green circles show tested traffic-signal candidate locations."
+              "The blue solid line is the main OSRM route.",
+              "The blue-green dashed line is the alternative route on existing roads.",
+              "The orange line is the tested new/alternative connection; when possible it follows OSRM road geometry.",
+              "Green circles show tested traffic-signal candidate locations, and the black/yellow line marks emergency priority."
             ]
           }
         ]
@@ -424,12 +445,22 @@ export const translations: Record<Language, TextBundle> = {
       start: "Başlangıç",
       end: "Varış",
       newRoad: "Yeni yol",
+      newRoadPlanned: "Yeni yol buraya eklenecek",
+      newRoadFrom: "Yeni yol baslangici",
+      newRoadTo: "Yeni yol bitisi",
+      alternativeRoute: "Mevcut yollardan alternatif rota",
       twoWay: "çift yönlü",
       oneWay: "tek yönlü",
+      roadMatched: "OSM yollarina uyarlandi",
+      straightCandidate: "muhendislik kisayol adayi",
       signal: "Işık",
       approaches: "yaklaşım",
       emergencyCorridor: "Acil koridor",
       minuteShort: "dk",
+      legendMainRoute: "Ana rota",
+      legendAlternativeRoute: "Alternatif rota",
+      legendNewRoad: "Test edilen yeni/alternatif baglanti",
+      legendTrafficSignal: "Trafik lambasi adayi",
       legendFree: "Akıcı",
       legendModerate: "Orta",
       legendHeavy: "Yoğun",
@@ -531,9 +562,10 @@ export const translations: Record<Language, TextBundle> = {
             title: "Harita işaretleri",
             items: [
               "Yeşil marker başlangıç noktasını, kırmızı marker varış noktasını gösterir.",
-              "Kalın rota çizgisi aktif senaryo rotasını temsil eder.",
-              "Turuncu çizgi test edilen yeni yol adayını gösterir.",
-              "Yeşil daireler test edilen trafik lambası aday noktalarıdır."
+              "Mavi düz çizgi ana OSRM rotasını gösterir.",
+              "Mavi-yeşil kesik çizgi mevcut yollardan alternatif rotadır.",
+              "Turuncu çizgi test edilen yeni/alternatif bağlantıdır; mümkün olduğunda OSRM yol geometrisini izler.",
+              "Yeşil daireler trafik lambası adaylarını, siyah/sarı çizgi acil öncelik koridorunu gösterir."
             ]
           }
         ]

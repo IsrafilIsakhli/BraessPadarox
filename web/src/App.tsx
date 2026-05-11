@@ -101,8 +101,6 @@ export default function App() {
     );
   }, [simulation, selectedScenario]);
 
-  const activeScenarioKey: ScenarioKey | null = highlightedScenario?.key ?? null;
-
   function applyCoordinateInput() {
     const parsedStart = parseCoordInput(startInput);
     const parsedEnd = parseCoordInput(endInput);
@@ -183,7 +181,7 @@ export default function App() {
       setBaseRoute(primaryRoute);
       setAlternativeRoute(altRoute ?? null);
 
-      const response = await simulateBraess({
+      const basePayload = {
         language,
         demandVehPerHour,
         start,
@@ -199,7 +197,35 @@ export default function App() {
           trafficLight,
           emergencyPriority
         }
-      });
+      };
+
+      const firstPass = await simulateBraess(basePayload);
+      let response = firstPass;
+
+      try {
+        const connectorRoutes = await fetchDrivingRoutes(
+          firstPass.interventions.newRoad.from,
+          firstPass.interventions.newRoad.to,
+          language
+        );
+        const connectorRoute = connectorRoutes[0];
+
+        if (connectorRoute) {
+          response = await simulateBraess({
+            ...basePayload,
+            routeMeta: {
+              ...basePayload.routeMeta,
+              candidateConnector: {
+                from: firstPass.interventions.newRoad.from,
+                to: firstPass.interventions.newRoad.to,
+                route: connectorRoute
+              }
+            }
+          });
+        }
+      } catch {
+        response = firstPass;
+      }
 
       setSimulation(response);
       setPickMode(null);
@@ -290,7 +316,6 @@ export default function App() {
             onPick={handlePick}
             baseRoute={baseRoute}
             alternativeRoute={alternativeRoute}
-            activeScenarioKey={activeScenarioKey}
             newRoad={simulation?.interventions.newRoad ?? null}
             trafficSignals={simulation?.interventions.trafficSignals ?? []}
             emergencyPriorityPlan={simulation?.interventions.emergencyPriority ?? null}
