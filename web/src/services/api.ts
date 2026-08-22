@@ -1,5 +1,14 @@
 import { getTexts } from "../i18n";
-import type { Coordinates, Language, RouteData, SimulationResponse } from "../types";
+import type {
+  AdvancedScenarioInput,
+  AdvancedSimulationResponse,
+  AnalysisMode,
+  Coordinates,
+  Language,
+  LiveTrafficAnalysis,
+  RouteData,
+  SimulationResponse
+} from "../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -67,4 +76,71 @@ export async function simulateBraess(
   }
 
   return (await response.json()) as SimulationResponse;
+}
+
+type AdvancedSimulationParams = {
+  mode: AnalysisMode;
+  language: Language;
+  start: Coordinates;
+  end: Coordinates;
+  demand?: {
+    forwardVehPerHour?: number;
+    reverseVehPerHour?: number;
+  };
+  routeMeta?: {
+    routes: RouteData[];
+    reverseRoutes: RouteData[];
+  };
+  scenarios: AdvancedScenarioInput[];
+};
+
+async function parseApiError(response: Response, fallback: string): Promise<Error> {
+  let payload: ApiErrorPayload & { code?: string } = {};
+  try {
+    payload = (await response.json()) as ApiErrorPayload & { code?: string };
+  } catch {
+    payload = {};
+  }
+  const issue = payload.issues?.[0];
+  const detail = payload.detail ?? issue?.message;
+  const message = payload.message ?? fallback;
+  return new Error(detail ? `${message}: ${detail}` : message);
+}
+
+export async function runAdvancedAnalysis(
+  params: AdvancedSimulationParams
+): Promise<AdvancedSimulationResponse> {
+  const errors = getTexts(params.language).errors;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/simulate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params)
+    });
+  } catch {
+    throw new Error(errors.apiConnection);
+  }
+  if (!response.ok) throw await parseApiError(response, errors.apiNoResponse);
+  return (await response.json()) as AdvancedSimulationResponse;
+}
+
+export async function fetchLiveTrafficAnalysis(
+  start: Coordinates,
+  end: Coordinates,
+  language: Language
+): Promise<LiveTrafficAnalysis> {
+  const errors = getTexts(language).errors;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/live-traffic/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ start, end, language, departAt: "now" })
+    });
+  } catch {
+    throw new Error(errors.apiConnection);
+  }
+  if (!response.ok) throw await parseApiError(response, errors.apiNoResponse);
+  return (await response.json()) as LiveTrafficAnalysis;
 }
