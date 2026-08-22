@@ -588,11 +588,11 @@ function prepareScenario(
       affectedGeometry: input.geometry,
       note: automaticCandidate
         ? tr
-          ? "Otomatik koridor adayıyla modellendi; mühendislik uygulanabilirliği ayrıca doğrulanmalıdır."
-          : "Modelled with an automatic corridor candidate; engineering feasibility requires separate validation."
+          ? "Otomatik aday, sürülebilir OSM yol geometrisi boyunca modellendi; mühendislik uygulanabilirliği ayrıca doğrulanmalıdır."
+          : "The automatic candidate follows drivable OSM road geometry; engineering feasibility requires separate validation."
         : tr
-          ? "Yol, kullanıcı geometrisi ve girilen mühendislik özellikleriyle modellendi."
-          : "The road uses the user geometry and supplied engineering attributes.",
+          ? "Kullanıcı kontrol noktaları sürülebilir OSM yollarına oturtuldu ve girilen mühendislik özellikleriyle modellendi."
+          : "User waypoints were aligned to drivable OSM roads and modelled with the supplied engineering attributes.",
       apply(next) {
         if (!from || !to || from === to) return;
         const baseEdge = {

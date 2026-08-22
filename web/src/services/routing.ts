@@ -44,6 +44,38 @@ function compactGeometry(points: [number, number][], maxPoints = 24): [number, n
   return compacted;
 }
 
+export function deriveRoadAlignedConnector(routes: RouteData[]): [number, number][] {
+  const primary = compactGeometry(routes[0]?.geometry ?? [], 64);
+  if (primary.length < 2) return [];
+
+  const startIndex = Math.floor((primary.length - 1) * 0.3);
+  const endIndex = Math.ceil((primary.length - 1) * 0.7);
+  const connector = primary.slice(startIndex, endIndex + 1);
+
+  return connector.length >= 2 ? connector : [primary[0], primary[primary.length - 1]];
+}
+
+export function mergeRoadAlignedGeometry(
+  current: [number, number][],
+  nextSegment: [number, number][],
+  maxPoints = 160
+): [number, number][] {
+  if (!nextSegment.length) return current;
+  if (current.length <= 1) return compactGeometry(nextSegment, maxPoints);
+
+  const currentEnd = current[current.length - 1];
+  const segmentStart = nextSegment[0];
+  const sameJoin =
+    Math.abs(currentEnd[0] - segmentStart[0]) < 0.00001 &&
+    Math.abs(currentEnd[1] - segmentStart[1]) < 0.00001;
+  const merged = [
+    ...current,
+    ...nextSegment.slice(sameJoin ? 1 : 0)
+  ];
+
+  return compactGeometry(merged, maxPoints);
+}
+
 function toRouteData(route: OsrmResponse["routes"][number]): RouteData {
   const segments =
     route.legs

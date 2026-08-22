@@ -4,7 +4,11 @@ import { useSearchParams } from "react-router-dom";
 import { AnalysisMap, type MapInteractionMode } from "../components/AnalysisMap";
 import { ResultsDashboard } from "../components/ResultsDashboard";
 import { runAdvancedAnalysis } from "../services/api";
-import { fetchDrivingRoutes } from "../services/routing";
+import {
+  deriveRoadAlignedConnector,
+  fetchDrivingRoutes,
+  mergeRoadAlignedGeometry
+} from "../services/routing";
 import type {
   AdvancedScenarioInput,
   AdvancedScenarioResult,
@@ -28,25 +32,6 @@ function coordinateText(point: Coordinates): string {
   return `${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}`;
 }
 
-function compactGeometry(geometry: [number, number][], maxPoints = 64): [number, number][] {
-  if (geometry.length <= maxPoints) return geometry;
-  return Array.from({ length: maxPoints }, (_, index) =>
-    geometry[Math.round((index / (maxPoints - 1)) * (geometry.length - 1))]
-  );
-}
-
-function deriveAutomaticConnector(routes: RouteData[]): [number, number][] {
-  const primary = compactGeometry(routes[0]?.geometry ?? []);
-  if (primary.length < 2) return [];
-  // A deterministic corridor shortcut gives the default analysis a usable
-  // candidate. It is explicitly presented as a screening geometry; users can
-  // replace it with a road they draw on the map for an engineering scenario.
-  return [
-    primary[Math.floor((primary.length - 1) * 0.3)],
-    primary[Math.floor((primary.length - 1) * 0.7)]
-  ];
-}
-
 type ScenarioFlags = {
   autoRoads: boolean;
   newRoad: boolean;
@@ -63,6 +48,8 @@ export function AnalysisPage({ language }: { language: Language }) {
   const [mode, setMode] = useState<AnalysisMode>(searchParams.get("mode") === "live-calibrated" ? "live-calibrated" : "static");
   const [interactionMode, setInteractionMode] = useState<MapInteractionMode>(null);
   const [newRoadGeometry, setNewRoadGeometry] = useState<[number, number][]>([]);
+  const [newRoadWaypoints, setNewRoadWaypoints] = useState<Coordinates[]>([]);
+  const [newRoadRouting, setNewRoadRouting] = useState(false);
   const [routeData, setRouteData] = useState<RouteData[]>([]);
   const [result, setResult] = useState<AdvancedSimulationResponse | null>(null);
   const [selectedScenario, setSelectedScenario] = useState<AdvancedScenarioResult | null>(null);
@@ -123,7 +110,35 @@ export function AnalysisPage({ language }: { language: Language }) {
 
   function toggleScenario(key: keyof ScenarioFlags) {
     setScenarioFlags((current) => ({ ...current, [key]: !current[key] }));
-    if (key === "newRoad" && !scenarioFlags.newRoad && newRoadGeometry.length < 2) setInteractionMode("newRoad");
+    if (key === "newRoad" && !scenarioFlags.newRoad && newRoadWaypoints.length < 2) setInteractionMode("newRoad");
+  }
+
+  async function appendNewRoadWaypoint(point: Coordinates) {
+    if (newRoadRouting || newRoadWaypoints.length >= 12) return;
+    const previous = newRoadWaypoints[newRoadWaypoints.length - 1];
+    setScenarioFlags((current) => ({ ...current, newRoad: true }));
+
+    if (!previous) {
+      setNewRoadWaypoints([point]);
+      setNewRoadGeometry([[point.lat, point.lon]]);
+      return;
+    }
+
+    setNewRoadRouting(true);
+    setError("");
+    try {
+      const routes = await fetchDrivingRoutes(previous, point, language);
+      const roadGeometry = routes[0]?.geometry ?? [];
+      if (roadGeometry.length < 2) {
+        throw new Error(tr ? "Bu iki nokta arasında sürülebilir yol bulunamadı." : "No drivable road was found between these points.");
+      }
+      setNewRoadGeometry((current) => mergeRoadAlignedGeometry(current, roadGeometry));
+      setNewRoadWaypoints((current) => [...current, point].slice(0, 12));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : (tr ? "Yeni yol, yol ağına oturtulamadı." : "The new road could not be aligned to the road network."));
+    } finally {
+      setNewRoadRouting(false);
+    }
   }
 
   function handleMapPick(point: Coordinates) {
@@ -134,15 +149,14 @@ export function AnalysisPage({ language }: { language: Language }) {
       setEnd(point);
       setInteractionMode(null);
     } else if (interactionMode === "newRoad") {
-      setNewRoadGeometry((current) => [...current, [point.lat, point.lon] as [number, number]].slice(0, 12));
-      setScenarioFlags((current) => ({ ...current, newRoad: true }));
+      void appendNewRoadWaypoint(point);
     }
   }
 
   function buildScenarios(routes: RouteData[]): AdvancedScenarioInput[] {
     const scenarios: AdvancedScenarioInput[] = [];
     if (scenarioFlags.autoRoads) {
-      const geometry = deriveAutomaticConnector(routes);
+      const geometry = deriveRoadAlignedConnector(routes);
       if (geometry.length >= 2) {
         scenarios.push({
           type: "newRoad", id: "auto-road-one-way", name: tr ? "Yeni Yol · Tek Yön" : "New Road · One-way",
@@ -174,7 +188,11 @@ export function AnalysisPage({ language }: { language: Language }) {
       setError(tr ? "Talep araç/saat olarak girilir. 100'den küçük değerleri silin veya en az 100 girin (ör. 1200)." : "Demand is entered in vehicles/hour. Clear values below 100 or enter at least 100 (for example 1200)." );
       return;
     }
-    if (scenarioFlags.newRoad && newRoadGeometry.length < 2) {
+    if (newRoadRouting) {
+      setError(tr ? "Yeni yol seçilen noktalar arasında yol ağına oturtuluyor. Birkaç saniye bekleyin." : "The new road is being aligned to the road network. Please wait a moment.");
+      return;
+    }
+    if (scenarioFlags.newRoad && newRoadWaypoints.length < 2) {
       setError(tr ? "Yeni yol senaryosu için haritada en az iki düğüm seçin." : "Select at least two map vertices for the new road scenario.");
       setInteractionMode("newRoad");
       return;
@@ -212,7 +230,7 @@ export function AnalysisPage({ language }: { language: Language }) {
   }
 
   function reset() {
-    setStart(defaultStart); setEnd(defaultEnd); setMode("static"); setNewRoadGeometry([]); setRouteData([]);
+    setStart(defaultStart); setEnd(defaultEnd); setMode("static"); setNewRoadGeometry([]); setNewRoadWaypoints([]); setRouteData([]);
     setResult(null); setError(""); setInteractionMode(null);
     setScenarioFlags({ autoRoads: true, newRoad: false, closure: true, signal: true, emergency: false });
   }
@@ -263,14 +281,15 @@ export function AnalysisPage({ language }: { language: Language }) {
               <div className="step-heading"><span>03</span><div><h2>{tr ? "Müdahaleler" : "Interventions"}</h2><p>{tr ? "Birden fazla senaryo seçilebilir" : "Multiple scenarios are allowed"}</p></div></div>
               <div className="scenario-options">
                 <label className={scenarioFlags.autoRoads ? "active" : ""}><input type="checkbox" checked={scenarioFlags.autoRoads} onChange={() => toggleScenario("autoRoads")} /><Waypoints size={18} /><span><b>{tr ? "Otomatik yeni yol testi" : "Automatic new-road test"}</b><small>{tr ? "Tek yön + çift yön birlikte karşılaştırılır" : "One-way + two-way are compared together"}</small></span></label>
-                <label className={scenarioFlags.newRoad ? "active" : ""}><input type="checkbox" checked={scenarioFlags.newRoad} onChange={() => toggleScenario("newRoad")} /><PencilRuler size={18} /><span><b>{tr ? "Yeni yol" : "New road"}</b><small>{newRoadGeometry.length >= 2 ? `${newRoadGeometry.length} ${tr ? "düğüm çizildi" : "vertices drawn"}` : (tr ? "Haritada çizim gerekir" : "Draw on the map")}</small></span></label>
+                <label className={scenarioFlags.newRoad ? "active" : ""}><input type="checkbox" checked={scenarioFlags.newRoad} onChange={() => toggleScenario("newRoad")} /><PencilRuler size={18} /><span><b>{tr ? "Yeni yol" : "New road"}</b><small>{newRoadRouting ? (tr ? "Yol ağına oturtuluyor…" : "Aligning to roads…") : newRoadWaypoints.length >= 2 ? `${newRoadWaypoints.length} ${tr ? "kontrol noktası" : "waypoints"}` : (tr ? "Haritada en az 2 nokta seçin" : "Select at least 2 map points")}</small></span></label>
                 <label className={scenarioFlags.closure ? "active" : ""}><input type="checkbox" checked={scenarioFlags.closure} onChange={() => toggleScenario("closure")} /><Route size={18} /><span><b>{tr ? "Güvenli kapatma" : "Safe closure"}</b><small>{tr ? "Bağlantıyı bozmayan aday" : "Connectivity-preserving candidate"}</small></span></label>
                 <label className={scenarioFlags.signal ? "active" : ""}><input type="checkbox" checked={scenarioFlags.signal} onChange={() => toggleScenario("signal")} /><CircleDot size={18} /><span><b>{tr ? "Sinyal optimizasyonu" : "Signal optimization"}</b><small>{tr ? "Webster gecikme modeli" : "Webster delay model"}</small></span></label>
                 <label className={scenarioFlags.emergency ? "active" : ""}><input type="checkbox" checked={scenarioFlags.emergency} onChange={() => toggleScenario("emergency")} /><Gauge size={18} /><span><b>{tr ? "Acil koridor" : "Emergency corridor"}</b><small>{tr ? "Ayrı ETA değerlendirmesi" : "Separate ETA assessment"}</small></span></label>
               </div>
 
               {scenarioFlags.newRoad && <div className="new-road-editor">
-                <div className="inline-actions"><button type="button" className={interactionMode === "newRoad" ? "active" : ""} onClick={() => setInteractionMode(interactionMode === "newRoad" ? null : "newRoad")}><PencilRuler size={15} />{interactionMode === "newRoad" ? (tr ? "Çizimi bitir" : "Finish drawing") : (tr ? "Çizime devam" : "Continue drawing")}</button><button type="button" onClick={() => setNewRoadGeometry([])}><RotateCcw size={15} />{tr ? "Temizle" : "Clear"}</button></div>
+                <div className="inline-actions"><button type="button" className={interactionMode === "newRoad" ? "active" : ""} disabled={newRoadRouting} onClick={() => setInteractionMode(interactionMode === "newRoad" ? null : "newRoad")}><PencilRuler size={15} />{interactionMode === "newRoad" ? (tr ? "Çizimi bitir" : "Finish drawing") : (tr ? "Çizime devam" : "Continue drawing")}</button><button type="button" disabled={newRoadRouting} onClick={() => { setNewRoadGeometry([]); setNewRoadWaypoints([]); }}><RotateCcw size={15} />{tr ? "Temizle" : "Clear"}</button></div>
+                <p className="field-help">{tr ? "Seçtiğiniz kontrol noktaları arasındaki çizgi, sürülebilir OSM yollarına otomatik oturtulur; binaların üzerinden düz bağlantı kurulmaz." : "The line between selected waypoints is automatically aligned to drivable OSM roads; no straight connection is drawn through buildings."}</p>
                 <div className="two-column-fields"><label><span>{tr ? "Yön" : "Direction"}</span><select value={roadDirection} onChange={(event) => setRoadDirection(event.target.value as "one-way" | "two-way")}><option value="two-way">{tr ? "Çift yön" : "Two-way"}</option><option value="one-way">{tr ? "Tek yön" : "One-way"}</option></select></label><label><span>{tr ? "Şerit" : "Lanes"}</span><input type="number" min="1" max="8" value={laneCount} onChange={(event) => setLaneCount(Number(event.target.value))} /></label><label><span>{tr ? "Hız sınırı" : "Speed limit"}</span><div className="input-suffix"><input type="number" min="10" max="160" value={speedLimit} onChange={(event) => setSpeedLimit(Number(event.target.value))} /><small>km/h</small></div></label><label><span>{tr ? "Kapasite" : "Capacity"}</span><input type="number" min="100" max="20000" placeholder={tr ? "Tahmin et" : "Estimate"} value={capacity} onChange={(event) => setCapacity(event.target.value)} /></label></div>
               </div>}
 
@@ -279,14 +298,14 @@ export function AnalysisPage({ language }: { language: Language }) {
             </section>
 
             {error && <div className="form-error" role="alert">{error}</div>}
-            <div className="control-actions"><button type="button" className="primary-action" disabled={loading} onClick={runAnalysis}>{loading ? (tr ? "Denge çözülüyor…" : "Solving equilibrium…") : (tr ? "Analizi çalıştır" : "Run analysis")}<ArrowRight size={18} /></button><button type="button" className="secondary-action" onClick={reset}><RotateCcw size={16} />{tr ? "Sıfırla" : "Reset"}</button></div>
+            <div className="control-actions"><button type="button" className="primary-action" disabled={loading || newRoadRouting} onClick={runAnalysis}>{newRoadRouting ? (tr ? "Yola oturtuluyor…" : "Aligning to roads…") : loading ? (tr ? "Denge çözülüyor…" : "Solving equilibrium…") : (tr ? "Analizi çalıştır" : "Run analysis")}<ArrowRight size={18} /></button><button type="button" className="secondary-action" onClick={reset}><RotateCcw size={16} />{tr ? "Sıfırla" : "Reset"}</button></div>
           </div>
         </details>
 
         <section className="map-workspace" id="analysis-map-workspace">
           <div className="map-toolbar">
             <div><span className="live-indicator"><i className={mode === "live-calibrated" ? "pulse" : ""} />{mode === "live-calibrated" ? (tr ? "Canlı kalibrasyon" : "Live calibration") : (tr ? "Statik koridor" : "Static corridor")}</span><small>{coordinateText(start)} → {coordinateText(end)}</small></div>
-            <div className="map-toolbar-meta"><span>{routeData.length || "—"} {tr ? "rota" : "routes"}</span><span>{newRoadGeometry.length} {tr ? "çizim noktası" : "draw points"}</span></div>
+            <div className="map-toolbar-meta"><span>{routeData.length || "—"} {tr ? "rota" : "routes"}</span><span>{newRoadWaypoints.length} {tr ? "kontrol noktası" : "waypoints"}</span></div>
           </div>
           <AnalysisMap language={language} start={start} end={end} routes={mapRoutes} liveTraffic={result?.liveTraffic} scenario={selectedScenario} newRoadGeometry={newRoadGeometry} interactionMode={interactionMode} onMapPick={handleMapPick} />
           {mappableScenarios.length > 0 && <div className="map-scenario-switcher" aria-label={tr ? "Haritada gösterilecek müdahale" : "Action shown on the map"}>
@@ -301,7 +320,7 @@ export function AnalysisPage({ language }: { language: Language }) {
         </section>
       </div>
 
-      <div className="mobile-run-bar"><button type="button" disabled={loading} onClick={runAnalysis}>{loading ? (tr ? "Analiz ediliyor…" : "Analyzing…") : (tr ? "Analizi çalıştır" : "Run analysis")}<ArrowRight size={18} /></button></div>
+      <div className="mobile-run-bar"><button type="button" disabled={loading || newRoadRouting} onClick={runAnalysis}>{newRoadRouting ? (tr ? "Yola oturtuluyor…" : "Aligning to roads…") : loading ? (tr ? "Analiz ediliyor…" : "Analyzing…") : (tr ? "Analizi çalıştır" : "Run analysis")}<ArrowRight size={18} /></button></div>
       {result && <div id="analysis-results" className="analysis-results-wrap"><ResultsDashboard language={language} result={result} selectedScenarioKey={selectedScenario?.key} onScenarioSelect={setSelectedScenario} onScenarioFocus={focusScenarioOnMap} /></div>}
     </main>
   );
