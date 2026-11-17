@@ -9,7 +9,7 @@ describe("AppShell", () => {
     const onLanguageChange = vi.fn();
     render(<MemoryRouter initialEntries={["/analysis"]}><AppShell language="tr" onLanguageChange={onLanguageChange}><main>İçerik</main></AppShell></MemoryRouter>);
 
-    expect(screen.getByRole("link", { name: /Analiz/i }).getAttribute("href")).toBe("/analysis");
+    expect(screen.getByRole("link", { name: /Simülasyon/i }).getAttribute("href")).toBe("/analysis");
     expect(screen.getByRole("link", { name: /Canlı Trafik/i }).getAttribute("href")).toBe("/live-traffic");
     expect(screen.getByRole("link", { name: /Metodoloji/i }).getAttribute("href")).toBe("/methodology");
     fireEvent.click(screen.getByRole("button", { name: "EN" }));
