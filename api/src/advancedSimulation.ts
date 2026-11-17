@@ -10,6 +10,7 @@ import type {
   EquilibriumMetrics,
   Language,
   LiveTrafficAnalysis,
+  ModelMapEdge,
   RoutePayload,
   UncertaintySummary
 } from "./types.js";
@@ -158,7 +159,7 @@ function cloneGraph(graph: TrafficGraph): TrafficGraph {
 }
 
 function nodeId(coord: Coordinates): string {
-  return `${coord.lat.toFixed(4)},${coord.lon.toFixed(4)}`;
+  return `${coord.lat.toFixed(5)},${coord.lon.toFixed(5)}`;
 }
 
 function addNode(graph: TrafficGraph, coord: Coordinates): string {
@@ -243,25 +244,22 @@ function normalizeRoutes(
 ): RoutePayload[] {
   const valid = (routes ?? []).filter((route) => route.geometry.length >= 2);
   if (valid.length) return valid;
-  const distanceKm = Math.max(haversineKm(start, end), 0.2);
-  return [{
-    distanceKm,
-    durationMin: (distanceKm / 42) * 60,
-    geometry: [[start.lat, start.lon], [end.lat, end.lon]]
-  }];
+  throw new Error("A routed road network is required; straight-line fallback is disabled.");
 }
 
 function addRoutesToGraph(graph: TrafficGraph, routes: RoutePayload[]): void {
   routes.forEach((route) => {
     const geometry = compactGeometry(route.geometry);
-    const measuredLength = Math.max(geometryLength(geometry), 0.001);
+    const sourceIndexes = geometry.map((point) => route.geometry.indexOf(point));
+    const measuredLength = Math.max(geometryLength(route.geometry), 0.001);
     const speedKmh = clamp(route.distanceKm / Math.max(route.durationMin / 60, 0.01), 8, 110);
     for (let index = 0; index < geometry.length - 1; index += 1) {
       const [fromLat, fromLon] = geometry[index];
       const [toLat, toLon] = geometry[index + 1];
       const fromCoord = { lat: fromLat, lon: fromLon };
       const toCoord = { lat: toLat, lon: toLon };
-      const segmentLength = Math.max(haversineKm(fromCoord, toCoord), 0.004);
+      const roadGeometry = route.geometry.slice(sourceIndexes[index], sourceIndexes[index + 1] + 1);
+      const segmentLength = Math.max(geometryLength(roadGeometry), 0.004);
       const from = addNode(graph, fromCoord);
       const to = addNode(graph, toCoord);
       if (from === to) continue;
@@ -272,7 +270,7 @@ function addRoutesToGraph(graph: TrafficGraph, routes: RoutePayload[]): void {
         freeFlowMinutes: Math.max(0.01, route.durationMin * (segmentLength / measuredLength)),
         capacityVehPerHour: capacityFromSpeed(speedKmh),
         signalDelayMinutes: estimatedIntersectionDelay(speedKmh),
-        geometry: [[fromLat, fromLon], [toLat, toLon]],
+        geometry: roadGeometry,
         capacitySource: "speed-class"
       });
     }
@@ -286,14 +284,13 @@ function nearestEdge(graph: TrafficGraph, point: Coordinates): GraphEdge | undef
     const from = graph.nodes.get(edge.from)?.coord;
     const to = graph.nodes.get(edge.to)?.coord;
     if (!from || !to) return;
-    const midpoint = { lat: (from.lat + to.lat) / 2, lon: (from.lon + to.lon) / 2 };
-    const distance = haversineKm(midpoint, point);
+    const distance = Math.min(...edge.geometry.map(([lat,lon]) => haversineKm({lat,lon},point)));
     if (distance < closestDistance) {
       closestDistance = distance;
       closest = edge;
     }
   });
-  return closestDistance <= 1.2 ? closest : undefined;
+  return closestDistance <= .12 ? closest : undefined;
 }
 
 function applyLiveCalibration(graph: TrafficGraph, liveTraffic?: LiveTrafficAnalysis): void {
@@ -576,6 +573,7 @@ function prepareScenario(
     const last = input.geometry[input.geometry.length - 1];
     const from = first ? nearestNodeId(graph, { lat: first[0], lon: first[1] }) : undefined;
     const to = last ? nearestNodeId(graph, { lat: last[0], lon: last[1] }) : undefined;
+    if (!from || !to || !first || !last || haversineKm(graph.nodes.get(from)!.coord, {lat:first[0],lon:first[1]}) > .12 || haversineKm(graph.nodes.get(to)!.coord, {lat:last[0],lon:last[1]}) > .12) throw new Error("The proposed road must connect to the analyzed corridor within 120 metres.");
     const lengthKm = Math.max(geometryLength(input.geometry), 0.08);
     const laneCapacity = capacityFromSpeed(input.speedLimitKmh);
     const capacity = input.capacityVehPerHour ?? laneCapacity * input.laneCount;
@@ -607,12 +605,15 @@ function prepareScenario(
           capacitySource: "user" as const
         };
         addEdge(next, baseEdge, `${key}:forward`);
-        if (input.direction === "two-way") {
+        if (input.direction === "two-way" && input.reverseGeometry?.length) {
+          const reverseLength = geometryLength(input.reverseGeometry);
           addEdge(next, {
             ...baseEdge,
             from: to,
             to: from,
-            geometry: [...input.geometry].reverse()
+            lengthKm: reverseLength,
+            freeFlowMinutes: reverseLength / input.speedLimitKmh * 60,
+            geometry: input.reverseGeometry
           }, `${key}:reverse`);
         }
       }
@@ -620,7 +621,13 @@ function prepareScenario(
   }
 
   if (input.type === "closure") {
-    let edgeId = input.edgeId && graph.edges.has(input.edgeId) ? input.edgeId : undefined;
+    let edgeId = input.location ? nearestEdge(graph, input.location)?.id : input.edgeId && graph.edges.has(input.edgeId) ? input.edgeId : undefined;
+    if (input.location && !edgeId) throw new Error("Choose a road on the analyzed corridor within 120 metres.");
+    if (edgeId) {
+      const testGraph = cloneGraph(graph);
+      removeEdge(testGraph, edgeId);
+      if (!solveUserEquilibrium(testGraph, ods).metrics.feasible) throw new Error("This closure disconnects the corridor. Select another road.");
+    }
     if (!edgeId) {
       let bestTime = baseline.metrics.averageTravelTimeMinutes;
       for (const candidate of baseline.bottlenecks.slice(0, 8)) {
@@ -658,7 +665,9 @@ function prepareScenario(
     const candidateEdge = baseline.bottlenecks
       .map((item) => graph.edges.get(item.edgeId))
       .find((edge) => edge && !ods.some((od) => od.origin === edge.to || od.destination === edge.to));
-    const selectedNode = input.nodeId && graph.nodes.has(input.nodeId)
+    const locatedEdge = input.location ? nearestEdge(graph, input.location) : undefined;
+    if (input.location && !locatedEdge) throw new Error("Choose a junction on the analyzed corridor within 120 metres.");
+    const selectedNode = locatedEdge ? locatedEdge.to : input.nodeId && graph.nodes.has(input.nodeId)
       ? input.nodeId
       : candidateEdge?.to;
     const cycle = input.cycleSeconds ?? 90;
@@ -689,11 +698,16 @@ function prepareScenario(
     };
   }
 
+  const emergencyPath = ods[0] ? shortestPath(graph, ods[0].origin, ods[0].destination, baseline.costs) : null;
   return {
     input,
     key,
     title,
     category: "emergency",
+    affectedGeometry: emergencyPath?.edges.flatMap((id, index) => {
+      const points = graph.edges.get(id)!.geometry;
+      return index ? points.slice(1) : points;
+    }),
     note: tr
       ? "Acil koridorda sinyal gecikmesi azaltıldı; bu sonuç genel ağ önerisine katılmaz."
       : "Signal delay was reduced on the emergency corridor; this is excluded from network recommendations.",
@@ -727,9 +741,18 @@ function resultForScenario(
     deltaMinutes: round(deltaMinutes),
     deltaPercent: round(deltaPercent),
     affectedGeometry: prepared.affectedGeometry,
+    reverseAffectedGeometry: prepared.input.type === "newRoad" ? prepared.input.reverseGeometry : undefined,
     affectedEdgeId: prepared.affectedEdgeId,
     note: prepared.note
   };
+}
+
+function mapFlowEdges(graph: TrafficGraph, solved: SolveResult): ModelMapEdge[] {
+  return [...graph.edges.values()].filter((edge) => (solved.flows.get(edge.id) ?? 0) > .1).map((edge) => {
+    const flow = solved.flows.get(edge.id) ?? 0;
+    const time = solved.costs.get(edge.id) ?? edge.freeFlowMinutes;
+    return { edgeId:edge.id, geometry:edge.geometry, flowVehPerHour:round(flow), capacityVehPerHour:round(edge.capacityVehPerHour), volumeCapacityRatio:round(flow/edge.capacityVehPerHour,3), speedKmh:round(edge.lengthKm/Math.max(time,.001)*60,1), travelTimeMinutes:round(time) };
+  });
 }
 
 function seededRandom(seed: number): () => number {
@@ -770,6 +793,8 @@ function uncertaintyFor(values: number[]): UncertaintySummary {
   };
 }
 
+function inputHasRoad(results: AdvancedScenarioResult[]) { return results.some((item) => item.type === "newRoad"); }
+
 export function classifyDecision(
   language: Language,
   baseline: SolveResult,
@@ -804,7 +829,7 @@ export function classifyDecision(
 
   if (!focus) {
     return {
-      status: "not-detected",
+      status: inputHasRoad(results) ? "inconclusive" : "not-detected",
       headline: tr ? "Koridor senaryoları karşılaştırıldı" : "Corridor scenarios compared",
       summary: tr ? "En düşük denge süresine sahip ağ seçeneği öne çıkarıldı." : "The network option with the lowest equilibrium time is highlighted.",
       deltaPercent: 0,
@@ -814,6 +839,7 @@ export function classifyDecision(
   }
 
   const uncertainty = focus.uncertainty!;
+  if (!uncertainty || uncertainty.samples < 80) return { status: "inconclusive", headline: tr ? "Geçerli belirsizlik örneği yetersiz" : "Insufficient converged uncertainty samples", summary: tr ? "Talep ve ağ varsayımlarını inceleyin." : "Review demand and network assumptions.", deltaPercent: 0, probabilityOfWorsening: 0, recommendedScenarioKey: recommended.key };
   const median = uncertainty.medianDeltaPercent;
   const probability = uncertainty.probabilityOfWorsening;
   let status: BraessDecision["status"] = "not-detected";
@@ -912,7 +938,8 @@ export function runAdvancedSimulation(
   const scenarioResults = prepared.map((scenario) => {
     const scenarioGraph = cloneGraph(graph);
     scenario.apply(scenarioGraph, baseline);
-    return resultForScenario(scenario, solveUserEquilibrium(scenarioGraph, ods), baseline);
+    const solved = solveUserEquilibrium(scenarioGraph, ods);
+    return {...resultForScenario(scenario, solved, baseline), mapEdges:mapFlowEdges(scenarioGraph, solved)};
   });
 
   const deltas = new Map(prepared.map((scenario) => [scenario.key, [] as number[]]));
@@ -923,12 +950,12 @@ export function runAdvancedSimulation(
     const demandFactor = 0.85 + random() * 0.3;
     const sampleOds = ods.map((od) => ({ ...od, demandVehPerHour: od.demandVehPerHour * demandFactor }));
     const sampleBaseline = solveUserEquilibrium(sampleGraph, sampleOds);
-    if (!sampleBaseline.metrics.feasible) continue;
+    if (!sampleBaseline.metrics.feasible || !sampleBaseline.metrics.converged) continue;
     prepared.forEach((scenario) => {
       const scenarioGraph = cloneGraph(sampleGraph);
       scenario.apply(scenarioGraph, sampleBaseline);
       const solved = solveUserEquilibrium(scenarioGraph, sampleOds);
-      if (!solved.metrics.feasible) return;
+      if (!solved.metrics.feasible || !solved.metrics.converged) return;
       const deltaPercent =
         ((solved.metrics.averageTravelTimeMinutes - sampleBaseline.metrics.averageTravelTimeMinutes) /
           Math.max(sampleBaseline.metrics.averageTravelTimeMinutes, 0.01)) * 100;
@@ -952,6 +979,15 @@ export function runAdvancedSimulation(
       : "The current directed network was solved at user equilibrium."
   };
   const dataQuality = buildDataQuality(language, demand.source, baseline, liveTraffic);
+  const road = prepared.find((scenario) => scenario.input.type === "newRoad");
+  const sensitivity = road ? [.4, .6, .8, 1, 1.2, 1.4, 1.6].map((factor) => {
+    const scaled = ods.map((od) => ({ ...od, demandVehPerHour: od.demandVehPerHour * factor }));
+    const base = solveUserEquilibrium(graph, scaled);
+    const modified = cloneGraph(graph);
+    road.apply(modified, base);
+    const after = solveUserEquilibrium(modified, scaled);
+    return { demand: round(demand.forward * factor), baselineMinutes: base.metrics.averageTravelTimeMinutes, scenarioMinutes: after.metrics.averageTravelTimeMinutes, converged: base.metrics.converged && after.metrics.converged };
+  }) : [];
 
   return {
     decision: classifyDecision(language, baseline, scenarioResults),
@@ -966,6 +1002,8 @@ export function runAdvancedSimulation(
       ...(demand.source === "manual" ? [{ source: "User" as const, label: "Directional demand input" }] : [])
     ],
     diagnostics: {
+      mapEdges:mapFlowEdges(graph, baseline),
+      sensitivity,
       model: "Directed corridor graph · BPR α=0.15 β=4 · Frank-Wolfe relative gap ≤ 1e-4",
       nodeCount: graph.nodes.size,
       edgeCount: graph.edges.size,

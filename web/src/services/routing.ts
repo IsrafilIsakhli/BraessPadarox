@@ -30,22 +30,8 @@ function routeCacheKey(start: Coordinates, end: Coordinates, language: Language)
   ].join("|");
 }
 
-function compactGeometry(points: [number, number][], maxPoints = 24): [number, number][] {
-  if (points.length <= maxPoints) return points;
-
-  const compacted: [number, number][] = [points[0]];
-  const step = (points.length - 1) / (maxPoints - 1);
-
-  for (let i = 1; i < maxPoints - 1; i += 1) {
-    compacted.push(points[Math.round(i * step)]);
-  }
-
-  compacted.push(points[points.length - 1]);
-  return compacted;
-}
-
 export function deriveRoadAlignedConnector(routes: RouteData[]): [number, number][] {
-  const primary = compactGeometry(routes[0]?.geometry ?? [], 64);
+  const primary = routes[0]?.geometry ?? [];
   if (primary.length < 2) return [];
 
   const startIndex = Math.floor((primary.length - 1) * 0.3);
@@ -57,11 +43,10 @@ export function deriveRoadAlignedConnector(routes: RouteData[]): [number, number
 
 export function mergeRoadAlignedGeometry(
   current: [number, number][],
-  nextSegment: [number, number][],
-  maxPoints = 160
+  nextSegment: [number, number][]
 ): [number, number][] {
   if (!nextSegment.length) return current;
-  if (current.length <= 1) return compactGeometry(nextSegment, maxPoints);
+  if (current.length <= 1) return nextSegment;
 
   const currentEnd = current[current.length - 1];
   const segmentStart = nextSegment[0];
@@ -73,7 +58,8 @@ export function mergeRoadAlignedGeometry(
     ...nextSegment.slice(sameJoin ? 1 : 0)
   ];
 
-  return compactGeometry(merged, maxPoints);
+  if (!sameJoin) throw new Error("Road segments do not share a routed junction. Select the last road point again.");
+  return merged;
 }
 
 function toRouteData(route: OsrmResponse["routes"][number]): RouteData {
@@ -84,9 +70,7 @@ function toRouteData(route: OsrmResponse["routes"][number]): RouteData {
         distanceKm: Math.max(step.distance / 1000, 0),
         durationMin: Math.max(step.duration / 60, 0),
         name: step.name || "Unnamed road",
-        geometry: compactGeometry(
-          step.geometry.coordinates.map(([lon, lat]) => [lat, lon] as [number, number])
-        )
+        geometry: step.geometry.coordinates.map(([lon, lat]) => [lat, lon] as [number, number])
       }))
       .filter((step) => step.geometry.length >= 2) ?? [];
 
@@ -124,9 +108,9 @@ async function fetchDrivingRoutesFromOsrm(
   const url =
     `https://router.project-osrm.org/route/v1/driving/` +
     `${start.lon},${start.lat};${end.lon},${end.lat}` +
-    `?overview=full&geometries=geojson&alternatives=true&steps=true`;
+    `?overview=full&geometries=geojson&alternatives=true&steps=true&radiuses=100;100`;
 
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
   if (!response.ok) {
     throw new Error(errors.osmUnavailable);
   }

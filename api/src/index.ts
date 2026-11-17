@@ -3,6 +3,7 @@ import cors from "cors";
 import express from "express";
 import { z } from "zod";
 import { runAdvancedSimulation } from "./advancedSimulation.js";
+import { validateRoadScenarios } from "./roadRouting.js";
 import { analyzeLiveTraffic, LiveTrafficError } from "./liveTraffic.js";
 import { runSimulation } from "./simulation.js";
 import type {
@@ -123,7 +124,8 @@ const newRoadScenarioSchema = z.object({
   type: z.literal("newRoad"),
   id: z.string().min(1).max(80).optional(),
   name: z.string().min(1).max(120).optional(),
-  geometry: z.array(z.tuple([z.number(), z.number()])).min(2).max(120),
+  geometry: z.array(z.tuple([z.number().min(-90).max(90), z.number().min(-180).max(180)])).min(2).max(20000),
+  waypoints: z.array(z.tuple([z.number().min(-90).max(90), z.number().min(-180).max(180)])).min(2).max(12).optional(),
   direction: z.enum(["one-way", "two-way"]),
   laneCount: z.number().int().min(1).max(8),
   speedLimitKmh: z.number().min(10).max(160),
@@ -135,6 +137,7 @@ const closureScenarioSchema = z.object({
   id: z.string().min(1).max(80).optional(),
   name: z.string().min(1).max(120).optional(),
   edgeId: z.string().min(1).max(180).optional()
+  ,location: coordinatesSchema.optional()
 });
 
 const signalScenarioSchema = z.object({
@@ -142,6 +145,7 @@ const signalScenarioSchema = z.object({
   id: z.string().min(1).max(80).optional(),
   name: z.string().min(1).max(120).optional(),
   nodeId: z.string().min(1).max(180).optional(),
+  location: coordinatesSchema.optional(),
   cycleSeconds: z.number().min(30).max(240).optional(),
   greenRatio: z.number().min(0.15).max(0.85).optional()
 });
@@ -234,7 +238,7 @@ app.post("/api/live-traffic/analyze", liveTrafficRateLimit, async (req, res) => 
   }
 });
 
-app.post("/api/simulate", async (req, res) => {
+app.post("/api/simulate", liveTrafficRateLimit, async (req, res) => {
   const language = requestLanguage(req.body);
   const messages = apiMessages[language];
   const isAdvancedRequest =
@@ -263,9 +267,8 @@ app.post("/api/simulate", async (req, res) => {
           if (!hasStaticFallback) throw error;
         }
       }
-      return res.json(
-        runAdvancedSimulation(advanced.data as AdvancedSimulationRequest, liveTraffic)
-      );
+      const verified = await validateRoadScenarios(advanced.data as AdvancedSimulationRequest);
+      return res.json(runAdvancedSimulation(verified, liveTraffic));
     } catch (error) {
       if (error instanceof LiveTrafficError) {
         return res.status(error.status).json({ message: error.message, code: error.code });

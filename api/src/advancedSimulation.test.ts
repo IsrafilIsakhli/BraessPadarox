@@ -133,6 +133,21 @@ describe("uncertainty decision rules", () => {
 });
 
 describe("advanced simulation response", () => {
+  it("keeps full road bends in edge geometry and returns the emergency path and signal point", () => {
+    const geometry: [number,number][] = Array.from({length:180},(_,i) => [40+i/100000,49+Math.sin(i/8)/100000]);
+    const response=runAdvancedSimulation({mode:"static",start:{lat:geometry[0][0],lon:geometry[0][1]},end:{lat:geometry[179][0],lon:geometry[179][1]},demand:{forwardVehPerHour:500,reverseVehPerHour:0},routeMeta:{routes:[{distanceKm:1,durationMin:2,geometry}]},scenarios:[{type:"signal"},{type:"emergencyPriority"}]});
+    expect(response.scenarios.find(s=>s.type==='signal')?.affectedGeometry).toHaveLength(1);
+    expect(response.scenarios.find(s=>s.type==='emergencyPriority')?.affectedGeometry).toEqual(geometry);
+    for(const edge of response.diagnostics.edgeFlows) {
+      const index=geometry.findIndex(point=>point[0]===edge.geometry[0][0]&&point[1]===edge.geometry[0][1]);
+      expect(edge.geometry).toEqual(geometry.slice(index,index+edge.geometry.length));
+    }
+  });
+
+  it("does not invent a direct road when route data is absent", () => {
+    expect(()=>runAdvancedSimulation({mode:"static",start:{lat:40,lon:49},end:{lat:41,lon:50},scenarios:[]})).toThrow(/routed road network/);
+  });
+
   it("runs one hundred reproducible uncertainty samples and returns diagnostics", () => {
     const response = runAdvancedSimulation({
       mode: "static",

@@ -145,6 +145,8 @@ export type NewRoadScenarioInput = {
   name?: string;
   geometry: [number, number][];
   direction: "one-way" | "two-way";
+  reverseGeometry?: [number, number][];
+  waypoints?: [number, number][];
   laneCount: number;
   speedLimitKmh: number;
   capacityVehPerHour?: number;
@@ -155,6 +157,7 @@ export type ClosureScenarioInput = {
   id?: string;
   name?: string;
   edgeId?: string;
+  location?: Coordinates;
 };
 
 export type SignalScenarioInput = {
@@ -162,6 +165,7 @@ export type SignalScenarioInput = {
   id?: string;
   name?: string;
   nodeId?: string;
+  location?: Coordinates;
   cycleSeconds?: number;
   greenRatio?: number;
 };
@@ -222,6 +226,7 @@ export type EquilibriumMetrics = {
 };
 
 export type AdvancedScenarioResult = {
+  mapEdges?: ModelMapEdge[];
   key: string;
   type: AdvancedScenarioInput["type"] | "baseline";
   title: string;
@@ -231,6 +236,7 @@ export type AdvancedScenarioResult = {
   deltaPercent: number;
   uncertainty?: UncertaintySummary;
   affectedGeometry?: [number, number][];
+  reverseAffectedGeometry?: [number, number][];
   affectedEdgeId?: string;
   note: string;
 };
@@ -255,6 +261,8 @@ export type AdvancedSimulationResponse = {
     observedAt?: string;
   }>;
   diagnostics: {
+    mapEdges?: ModelMapEdge[];
+    sensitivity?: Array<{ demand: number; baselineMinutes: number; scenarioMinutes: number; converged: boolean }>;
     model: string;
     nodeCount: number;
     edgeCount: number;
@@ -273,6 +281,8 @@ export type AdvancedSimulationResponse = {
   };
   liveTraffic?: LiveTrafficAnalysis;
 };
+
+export type ModelMapEdge = { edgeId: string; geometry: [number,number][]; flowVehPerHour: number; capacityVehPerHour: number; volumeCapacityRatio: number; speedKmh: number; travelTimeMinutes: number };
 
 export type LiveTrafficRoute = {
   id: string;

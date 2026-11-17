@@ -32,4 +32,15 @@ describe("road-aligned new-road geometry", () => {
       [40.403, 49.803]
     ]);
   });
+
+  it("preserves every bend even on routes with thousands of points", () => {
+    const geometry: [number, number][] = Array.from({ length: 2000 }, (_, i) => [40 + i / 100000, 49 + Math.sin(i / 5) / 10000]);
+    const candidate = deriveRoadAlignedConnector([{ geometry, distanceKm: 4, durationMin: 8 }]);
+    expect(candidate).toEqual(geometry.slice(599, 1401));
+    expect(mergeRoadAlignedGeometry([], geometry)).toEqual(geometry);
+  });
+
+  it("rejects disconnected snaps rather than drawing a chord across buildings", () => {
+    expect(() => mergeRoadAlignedGeometry([[40,49],[40.01,49.01]],[[40.02,49.02],[40.03,49.03]])).toThrow(/share a routed junction/);
+  });
 });
