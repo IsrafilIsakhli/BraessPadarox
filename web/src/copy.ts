@@ -12,6 +12,17 @@ const copy = {
       estimated: "Tahmini", user: "Kullanıcı girişi"
     }
   },
+  az: {
+    brand: "Braess Lab",
+    descriptor: "Nəqliyyat şəbəkəsi analizatoru",
+    nav: { analysis: "Analiz", live: "Canlı trafik", methodology: "Metodologiya", about: "Haqqında" },
+    common: {
+      analyze: "Analizi işə sal", refresh: "Yenilə", close: "Bağla", minutes: "dəq",
+      vehiclesHour: "avtomobil/saat", dataQuality: "Məlumat keyfiyyəti",
+      worseningProbability: "Pisləşmə ehtimalı", live: "Canlı",
+      estimated: "Təxmini", user: "İstifadəçi girişi"
+    }
+  },
   en: {
     brand: "Braess Lab",
     descriptor: "Braess paradox analyzer",

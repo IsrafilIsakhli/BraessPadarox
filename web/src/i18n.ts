@@ -150,7 +150,7 @@ type TextBundle = {
   info: Record<InfoPageKey, InfoContent>;
 };
 
-export const translations: Record<Language, TextBundle> = {
+export const translations: Record<Exclude<Language, "az">, TextBundle> = {
   en: {
     app: {
       documentTitle: "Braess Paradox Traffic Analysis",
@@ -625,5 +625,5 @@ export const translations: Record<Language, TextBundle> = {
 };
 
 export function getTexts(language: Language): TextBundle {
-  return translations[language];
+  return translations[language === "az" ? "tr" : language];
 }

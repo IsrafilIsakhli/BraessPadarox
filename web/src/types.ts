@@ -3,7 +3,7 @@ export type Coordinates = {
   lon: number;
 };
 
-export type Language = "en" | "tr";
+export type Language = "en" | "tr" | "az";
 
 export type InfoPageKey = "documentation" | "methodology" | "about";
 

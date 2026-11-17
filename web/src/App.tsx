@@ -5,13 +5,18 @@ import { AboutPage } from "./pages/AboutPage";
 import { AnalysisPage } from "./pages/AnalysisPage";
 import { LiveTrafficPage } from "./pages/LiveTrafficPage";
 import { MethodologyPage } from "./pages/MethodologyPage";
+import { localized } from "./localization";
 import type { Language } from "./types";
 
 export default function App() {
-  const [language, setLanguage] = useState<Language>("tr");
+  const [language, setLanguage] = useState<Language>(() => {
+    const saved = window.localStorage.getItem("braess-language");
+    return saved === "tr" || saved === "az" || saved === "en" ? saved : "tr";
+  });
   useEffect(() => {
     document.documentElement.lang = language;
-    document.title = language === "tr" ? "Braess Lab · Trafik Analizi" : "Braess Lab · Traffic Analysis";
+    document.title = localized(language, "Braess Lab · Trafik Analizi", "Braess Lab · Nəqliyyat analizi", "Braess Lab · Traffic Analysis");
+    window.localStorage.setItem("braess-language", language);
   }, [language]);
   return (
     <BrowserRouter>

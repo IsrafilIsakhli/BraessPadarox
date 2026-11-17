@@ -1,4 +1,5 @@
 import { getTexts } from "../i18n";
+import { apiLanguage } from "../localization";
 import type {
   AdvancedScenarioInput,
   AdvancedSimulationResponse,
@@ -51,7 +52,7 @@ export async function simulateBraess(
     response = await fetch(`${API_BASE_URL}/api/simulate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params)
+      body: JSON.stringify({ ...params, language: apiLanguage(params.language) })
     });
   } catch {
     throw new Error(errors.apiConnection);
@@ -116,7 +117,7 @@ export async function runAdvancedAnalysis(
     response = await fetch(`${API_BASE_URL}/api/simulate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params)
+      body: JSON.stringify({ ...params, language: apiLanguage(params.language) })
     });
   } catch {
     throw new Error(errors.apiConnection);
@@ -136,7 +137,7 @@ export async function fetchLiveTrafficAnalysis(
     response = await fetch(`${API_BASE_URL}/api/live-traffic/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ start, end, language, departAt: "now" })
+      body: JSON.stringify({ start, end, language: apiLanguage(language), departAt: "now" })
     });
   } catch {
     throw new Error(errors.apiConnection);

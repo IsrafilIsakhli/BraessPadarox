@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Activity, BookOpenText, Info, Menu, RadioTower, X } from "lucide-react";
+import { Activity, BookOpenText, Info, Menu, Network, RadioTower, X } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { getCopy } from "../copy";
 import type { Language } from "../types";
@@ -20,7 +20,7 @@ export function AppShell({ children, language, onLanguageChange }: Props) {
     <div className="app-shell">
       <header className="site-header">
         <NavLink to="/analysis" className="wordmark" aria-label={text.brand}>
-          <span className="wordmark-mark" aria-hidden="true">B</span>
+          <span className="wordmark-mark" aria-hidden="true"><Network size={22} /></span>
           <span><strong>{text.brand}</strong><small>{text.descriptor}</small></span>
         </NavLink>
         <button className="mobile-menu-button" type="button" aria-label={menuOpen ? text.common.close : "Menu"} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
@@ -36,6 +36,7 @@ export function AppShell({ children, language, onLanguageChange }: Props) {
           </nav>
           <div className="language-control" aria-label="Language">
             <button type="button" className={language === "tr" ? "active" : ""} onClick={() => onLanguageChange("tr")}>TR</button>
+            <button type="button" className={language === "az" ? "active" : ""} onClick={() => onLanguageChange("az")}>AZ</button>
             <button type="button" className={language === "en" ? "active" : ""} onClick={() => onLanguageChange("en")}>EN</button>
           </div>
         </div>

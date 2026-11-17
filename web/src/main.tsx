@@ -8,6 +8,7 @@ import "@fontsource/ibm-plex-sans/latin-ext-700.css";
 import "@fontsource/ibm-plex-mono/latin-ext-500.css";
 import "leaflet/dist/leaflet.css";
 import "./styles.css";
+import "./academic.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, ArrowRight, CircleDot, Gauge, MapPin, PencilRuler, RotateCcw, Route, Settings2, Waypoints } from "lucide-react";
+import { Activity, ArrowRight, CircleDot, Gauge, MapPin, PencilRuler, RotateCcw, Route, Settings2, Sigma, Waypoints } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { AnalysisMap, type MapInteractionMode } from "../components/AnalysisMap";
+import { ResearchRail } from "../components/ResearchRail";
 import { ResultsDashboard } from "../components/ResultsDashboard";
+import { localized, scenarioName } from "../localization";
 import { runAdvancedAnalysis } from "../services/api";
 import {
   deriveRoadAlignedConnector,
@@ -41,7 +43,7 @@ type ScenarioFlags = {
 };
 
 export function AnalysisPage({ language }: { language: Language }) {
-  const tr = language === "tr";
+  const t = (trText: string, azText: string, enText: string) => localized(language, trText, azText, enText);
   const [searchParams] = useSearchParams();
   const [start, setStart] = useState(() => queryCoordinate(searchParams.get("start"), defaultStart));
   const [end, setEnd] = useState(() => queryCoordinate(searchParams.get("end"), defaultEnd));
@@ -70,7 +72,7 @@ export function AnalysisPage({ language }: { language: Language }) {
     newRoad: false,
     closure: true,
     signal: true,
-    emergency: false
+    emergency: true
   });
 
   useEffect(() => setError(""), [language]);
@@ -98,6 +100,19 @@ export function AnalysisPage({ language }: { language: Language }) {
   }, [result]);
 
   const selectedCount = Object.values(scenarioFlags).filter(Boolean).length;
+  const mapDecisionStatus = result?.decision.status ?? "pending";
+  const mapDecisionLabel = mapDecisionStatus === "detected"
+    ? t("BRAESS PARADOKSU: VAR", "BRAESS PARADOKSU: VAR", "BRAESS PARADOX: DETECTED")
+    : mapDecisionStatus === "possible"
+      ? t("BRAESS PARADOKSU: OLASI", "BRAESS PARADOKSU: MÜMKÜNDÜR", "BRAESS PARADOX: POSSIBLE")
+      : mapDecisionStatus === "inconclusive"
+        ? t("KARAR: YETERSİZ", "QƏRAR: QEYRİ-KAFİ", "DECISION: INCONCLUSIVE")
+        : mapDecisionStatus === "not-detected"
+          ? t("BRAESS PARADOKSU: YOK", "BRAESS PARADOKSU: YOXDUR", "BRAESS PARADOX: NOT DETECTED")
+          : t("BRAESS KARARI BEKLENİYOR", "BRAESS QƏRARI GÖZLƏNİLİR", "BRAESS DECISION PENDING");
+  const snapshotLabel = result?.liveTraffic?.snapshotAt
+    ? new Intl.DateTimeFormat(language === "en" ? "en-GB" : language === "az" ? "az-AZ" : "tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(result.liveTraffic.snapshotAt))
+    : t("Statik ağ verisi", "Statik şəbəkə məlumatı", "Static network data");
   const mapRoutes = useMemo(() => result?.liveTraffic?.routes.length ? undefined : routeData, [result, routeData]);
   const mappableScenarios = useMemo(() => result?.scenarios.filter((scenario) => scenario.affectedGeometry?.length) ?? [], [result]);
   const orderedMapScenarios = useMemo(() => [...mappableScenarios].sort((a, b) => Number(b.key === selectedScenario?.key) - Number(a.key === selectedScenario?.key)), [mappableScenarios, selectedScenario?.key]);
@@ -130,12 +145,12 @@ export function AnalysisPage({ language }: { language: Language }) {
       const routes = await fetchDrivingRoutes(previous, point, language);
       const roadGeometry = routes[0]?.geometry ?? [];
       if (roadGeometry.length < 2) {
-        throw new Error(tr ? "Bu iki nokta arasında sürülebilir yol bulunamadı." : "No drivable road was found between these points.");
+        throw new Error(t("Bu iki nokta arasında sürülebilir yol bulunamadı.", "Bu iki nöqtə arasında avtomobil üçün yol tapılmadı.", "No drivable road was found between these points."));
       }
       setNewRoadGeometry((current) => mergeRoadAlignedGeometry(current, roadGeometry));
       setNewRoadWaypoints((current) => [...current, point].slice(0, 12));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : (tr ? "Yeni yol, yol ağına oturtulamadı." : "The new road could not be aligned to the road network."));
+      setError(caught instanceof Error ? caught.message : t("Yeni yol, yol ağına oturtulamadı.", "Yeni yol yol şəbəkəsinə uyğunlaşdırılmadı.", "The new road could not be aligned to the road network."));
     } finally {
       setNewRoadRouting(false);
     }
@@ -159,19 +174,19 @@ export function AnalysisPage({ language }: { language: Language }) {
       const geometry = deriveRoadAlignedConnector(routes);
       if (geometry.length >= 2) {
         scenarios.push({
-          type: "newRoad", id: "auto-road-one-way", name: tr ? "Yeni Yol · Tek Yön" : "New Road · One-way",
+          type: "newRoad", id: "auto-road-one-way", name: t("Yeni Yol · Tek Yön", "Yeni yol · Bir istiqamət", "New Road · One-way"),
           geometry, direction: "one-way", laneCount, speedLimitKmh: speedLimit,
           capacityVehPerHour: capacity ? Number(capacity) : undefined
         });
         scenarios.push({
-          type: "newRoad", id: "auto-road-two-way", name: tr ? "Yeni Yol · Çift Yön" : "New Road · Two-way",
+          type: "newRoad", id: "auto-road-two-way", name: t("Yeni Yol · Çift Yön", "Yeni yol · İki istiqamət", "New Road · Two-way"),
           geometry, direction: "two-way", laneCount, speedLimitKmh: speedLimit,
           capacityVehPerHour: capacity ? Number(capacity) : undefined
         });
       }
     }
     if (scenarioFlags.newRoad) scenarios.push({
-      type: "newRoad", id: "user-new-road", name: tr ? "Çizilen Yeni Yol" : "Drawn New Road",
+      type: "newRoad", id: "user-new-road", name: t("Çizilen Yeni Yol", "Çəkilmiş yeni yol", "Drawn New Road"),
       geometry: newRoadGeometry, direction: roadDirection, laneCount, speedLimitKmh: speedLimit,
       capacityVehPerHour: capacity ? Number(capacity) : undefined
     });
@@ -185,15 +200,15 @@ export function AnalysisPage({ language }: { language: Language }) {
     const forward = forwardDemand ? Number(forwardDemand) : undefined;
     const reverse = reverseDemand ? Number(reverseDemand) : undefined;
     if ((forward !== undefined && forward > 0 && forward < 100) || (reverse !== undefined && reverse > 0 && reverse < 100)) {
-      setError(tr ? "Talep araç/saat olarak girilir. 100'den küçük değerleri silin veya en az 100 girin (ör. 1200)." : "Demand is entered in vehicles/hour. Clear values below 100 or enter at least 100 (for example 1200)." );
+      setError(t("Talep araç/saat olarak girilir. 100'den küçük değerleri silin veya en az 100 girin (ör. 1200).", "Tələb avtomobil/saat ilə daxil edilir. 100-dən kiçik dəyəri silin və ya ən azı 100 yazın (məs. 1200).", "Demand is entered in vehicles/hour. Clear values below 100 or enter at least 100 (for example 1200)."));
       return;
     }
     if (newRoadRouting) {
-      setError(tr ? "Yeni yol seçilen noktalar arasında yol ağına oturtuluyor. Birkaç saniye bekleyin." : "The new road is being aligned to the road network. Please wait a moment.");
+      setError(t("Yeni yol seçilen noktalar arasında yol ağına oturtuluyor. Birkaç saniye bekleyin.", "Yeni yol seçilmiş nöqtələr arasında yol şəbəkəsinə uyğunlaşdırılır. Bir neçə saniyə gözləyin.", "The new road is being aligned to the road network. Please wait a moment."));
       return;
     }
     if (scenarioFlags.newRoad && newRoadWaypoints.length < 2) {
-      setError(tr ? "Yeni yol senaryosu için haritada en az iki düğüm seçin." : "Select at least two map vertices for the new road scenario.");
+      setError(t("Yeni yol senaryosu için haritada en az iki düğüm seçin.", "Yeni yol ssenarisi üçün xəritədə ən azı iki düyün seçin.", "Select at least two map vertices for the new road scenario."));
       setInteractionMode("newRoad");
       return;
     }
@@ -223,7 +238,7 @@ export function AnalysisPage({ language }: { language: Language }) {
       setSelectedScenario(response.decision.status === "detected" || response.decision.status === "possible" ? roadFocus ?? recommendation : recommendation);
       window.setTimeout(() => document.getElementById("analysis-results")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : (tr ? "Analiz tamamlanamadı." : "Analysis could not be completed."));
+      setError(caught instanceof Error ? caught.message : t("Analiz tamamlanamadı.", "Analiz tamamlanmadı.", "Analysis could not be completed."));
     } finally {
       setLoading(false);
     }
@@ -232,7 +247,7 @@ export function AnalysisPage({ language }: { language: Language }) {
   function reset() {
     setStart(defaultStart); setEnd(defaultEnd); setMode("static"); setNewRoadGeometry([]); setNewRoadWaypoints([]); setRouteData([]);
     setResult(null); setError(""); setInteractionMode(null);
-    setScenarioFlags({ autoRoads: true, newRoad: false, closure: true, signal: true, emergency: false });
+    setScenarioFlags({ autoRoads: true, newRoad: false, closure: true, signal: true, emergency: true });
   }
 
   function focusScenarioOnMap(scenario: AdvancedScenarioResult) {
@@ -241,86 +256,131 @@ export function AnalysisPage({ language }: { language: Language }) {
   }
 
   return (
-    <main className="analysis-page">
-      <section className="analysis-intro">
-        <div><span className="eyebrow">{tr ? "BRAESS PARADOKSU TRAFİK ANALİZÖRÜ" : "BRAESS PARADOX TRAFFIC ANALYZER"}</span><h1>{tr ? "Yeni yol trafiği iyileştirir mi, kötüleştirir mi?" : "Will a new road improve traffic—or make it worse?"}</h1></div>
-        <p>{tr ? "Tek yön, çift yön, trafik lambası ve güvenli yol kapatma seçeneklerini aynı koridorda otomatik karşılaştırın. Sonuç doğrudan VAR, YOK veya OLASI olarak gösterilir." : "Automatically compare one-way, two-way, traffic-signal and safe-closure options on the same corridor. The result is shown directly as DETECTED, NOT DETECTED or POSSIBLE."}</p>
+    <main className="analysis-page research-analysis-page">
+      <section className="analysis-study-header">
+        <div className="study-title">
+          <span className="study-index">01</span>
+          <div><span className="eyebrow">{t("KORİDOR DENEYİ", "KORİDOR TƏCRÜBƏSİ", "CORRIDOR EXPERIMENT")}</span><h1>{t("Braess Paradoksu Koridor Analizi", "Braess Paradoksu Koridor Analizi", "Braess Paradox Corridor Analysis")}</h1></div>
+        </div>
+        <div className="study-metadata" aria-label={t("Deney özeti", "Təcrübə xülasəsi", "Experiment summary")}>
+          <div><span>{t("Konum", "Məkan", "Location")}</span><strong>⌖ Bakı, Azərbaycan</strong></div>
+          <div><span>{t("Model", "Model", "Model")}</span><strong>▱ BPR · Wardrop UE</strong></div>
+          <div><span>{t("Deney kimliği", "Təcrübə ID", "Experiment ID")}</span><strong>EXP–BAK–0147</strong></div>
+          <div><span>{t("Veri", "Məlumat", "Data")}</span><strong>{snapshotLabel}</strong></div>
+        </div>
       </section>
 
-      <div className="analysis-workbench">
+      <div className="analysis-workbench research-workbench">
         <details className="control-panel" open={controlsOpen} onToggle={(event) => setControlsOpen(event.currentTarget.open)}>
-          <summary><Settings2 size={18} /><span>{tr ? "Analiz ayarları" : "Analysis controls"}</span><small>{selectedCount} {tr ? "senaryo" : "scenarios"}</small></summary>
+          <summary><Settings2 size={18} /><span>{t("Deney kurulumu", "Təcrübə quruluşu", "Experiment setup")}</span><small>{selectedCount} {t("senaryo", "ssenari", "scenarios")}</small></summary>
           <div className="control-panel-body">
             <section className="control-step">
-              <div className="step-heading"><span>01</span><div><h2>{tr ? "Güzergâh" : "Corridor"}</h2><p>{tr ? "Başlangıç ve varış noktaları" : "Start and destination points"}</p></div></div>
+              <div className="step-heading"><span>01</span><div><h2>{t("Koridor", "Koridor", "Corridor")}</h2><p>{t("Başlangıç ve varış noktaları", "Başlanğıc və təyinat nöqtələri", "Origin and destination")}</p></div></div>
               {(["start", "end"] as const).map((kind) => {
                 const point = kind === "start" ? start : end;
-                const label = kind === "start" ? (tr ? "Başlangıç" : "Start") : (tr ? "Varış" : "Destination");
+                const label = kind === "start" ? t("Başlangıç", "Başlanğıc", "Origin") : t("Varış", "Təyinat", "Destination");
                 return <div className="coordinate-block" key={kind}>
-                  <div className="field-label"><span><i className={`point-dot is-${kind}`} />{label}</span><button type="button" onClick={() => setInteractionMode(interactionMode === kind ? null : kind)}><MapPin size={15} />{tr ? "Haritadan" : "From map"}</button></div>
+                  <div className="field-label"><span><i className={`point-dot is-${kind}`} />{label}</span><button type="button" onClick={() => setInteractionMode(interactionMode === kind ? null : kind)}><MapPin size={15} />{t("Haritadan seç", "Xəritədən seç", "Pick on map")}</button></div>
                   <div className="coordinate-grid"><label><span>LAT</span><input aria-label={`${label} latitude`} type="number" step="0.00001" value={point.lat} onChange={(event) => updateCoordinate(kind, "lat", event.target.value)} /></label><label><span>LON</span><input aria-label={`${label} longitude`} type="number" step="0.00001" value={point.lon} onChange={(event) => updateCoordinate(kind, "lon", event.target.value)} /></label></div>
                 </div>;
               })}
             </section>
 
             <section className="control-step">
-              <div className="step-heading"><span>02</span><div><h2>{tr ? "Talep ve veri" : "Demand & data"}</h2><p>{tr ? "Kalibrasyon kaynağını seçin" : "Choose the calibration source"}</p></div></div>
+              <div className="step-heading"><span>02</span><div><h2>{t("Talep ve veri", "Tələb və məlumat", "Demand & data")}</h2><p>{t("Kalibrasyon kaynağını seçin", "Kalibrasiya mənbəyini seçin", "Choose the calibration source")}</p></div></div>
               <div className="segmented-control">
-                <button type="button" className={mode === "static" ? "active" : ""} onClick={() => setMode("static")}><Waypoints size={16} />{tr ? "Statik model" : "Static model"}</button>
-                <button type="button" className={mode === "live-calibrated" ? "active" : ""} onClick={() => setMode("live-calibrated")}><Activity size={16} />{tr ? "Canlı kalibrasyon" : "Live calibrated"}</button>
+                <button type="button" className={mode === "static" ? "active" : ""} onClick={() => setMode("static")}><Waypoints size={16} />{t("Statik model", "Statik model", "Static model")}</button>
+                <button type="button" className={mode === "live-calibrated" ? "active" : ""} onClick={() => setMode("live-calibrated")}><Activity size={16} />{t("Canlı kalibrasyon", "Canlı kalibrasiya", "Live calibrated")}</button>
               </div>
-              <p className="field-help">{mode === "live-calibrated" ? (tr ? "TomTom canlı hızları sunucuda alınır; bulunamazsa statik rota kullanılır." : "TomTom live speeds are retrieved server-side; the static route remains as fallback.") : (tr ? "OSRM rota geometrisi ve açıklanmış kapasite tahminleri kullanılır." : "Uses OSRM route geometry and disclosed capacity estimates.")}</p>
+              <p className="field-help">{mode === "live-calibrated" ? t("TomTom canlı hızları sunucuda alınır; bulunamazsa statik rota kullanılır.", "TomTom canlı sürətləri serverdə alınır; tapılmazsa statik marşrut istifadə edilir.", "TomTom live speeds are retrieved server-side; static routing remains the fallback.") : t("OSRM geometrisi ve açıklanmış kapasite tahminleri kullanılır.", "OSRM geometriyası və açıqlanan tutum təxminləri istifadə olunur.", "OSRM geometry and disclosed capacity estimates are used.")}</p>
               <div className="demand-grid">
-                <label><span>{tr ? "Gidiş talebi" : "Forward demand"}</span><div className="input-suffix"><input type="number" min="100" step="100" max="12000" placeholder={tr ? "Otomatik / ör. 1200" : "Automatic / e.g. 1200"} value={forwardDemand} onChange={(event) => setForwardDemand(event.target.value)} /><small>{tr ? "araç/sa" : "veh/h"}</small></div></label>
-                <label><span>{tr ? "Dönüş talebi" : "Reverse demand"}</span><div className="input-suffix"><input type="number" min="100" step="100" max="12000" placeholder={tr ? "Otomatik / ör. 800" : "Automatic / e.g. 800"} value={reverseDemand} onChange={(event) => setReverseDemand(event.target.value)} /><small>{tr ? "araç/sa" : "veh/h"}</small></div></label>
+                <label><span>{t("Gidiş talebi", "Gediş tələbi", "Forward demand")}</span><div className="input-suffix"><input type="number" min="100" step="100" max="12000" placeholder={t("Otomatik / ör. 1200", "Avtomatik / məs. 1200", "Automatic / e.g. 1200")} value={forwardDemand} onChange={(event) => setForwardDemand(event.target.value)} /><small>{t("araç/sa", "avt/saat", "veh/h")}</small></div></label>
+                <label><span>{t("Dönüş talebi", "Qayıdış tələbi", "Reverse demand")}</span><div className="input-suffix"><input type="number" min="100" step="100" max="12000" placeholder={t("Otomatik / ör. 800", "Avtomatik / məs. 800", "Automatic / e.g. 800")} value={reverseDemand} onChange={(event) => setReverseDemand(event.target.value)} /><small>{t("araç/sa", "avt/saat", "veh/h")}</small></div></label>
               </div>
-              <p className="demand-note">{tr ? "Boş bırakırsanız talep model tarafından tahmin edilir. Değerler araç/saat cinsindedir." : "Leave blank for model estimation. Values are vehicles per hour."}</p>
+              <p className="demand-note">{t("Boş bırakırsanız talep model tarafından tahmin edilir.", "Boş saxlanıldıqda tələb model tərəfindən təxmin edilir.", "Leave blank for model estimation.")}</p>
+              <div className="model-protocol-card">
+                <div><span>{t("Ağ modeli", "Şəbəkə modeli", "Network model")}</span><strong>BPR {t("(standart)", "(standart)", "(standard)")}</strong></div>
+                <code>tₑ(x) = tₑ⁰ · [1 + α · (xₑ/cₑ)ᵝ]</code>
+                <small>α = 0.15&nbsp;&nbsp;&nbsp; β = 4.00</small>
+              </div>
             </section>
 
             <section className="control-step scenario-control">
-              <div className="step-heading"><span>03</span><div><h2>{tr ? "Müdahaleler" : "Interventions"}</h2><p>{tr ? "Birden fazla senaryo seçilebilir" : "Multiple scenarios are allowed"}</p></div></div>
+              <div className="step-heading"><span>03</span><div><h2>{t("Müdahaleler", "Müdaxilələr", "Interventions")}</h2><p>{t("Birden fazla senaryo seçilebilir", "Bir neçə ssenari seçilə bilər", "Select multiple scenarios")}</p></div></div>
               <div className="scenario-options">
-                <label className={scenarioFlags.autoRoads ? "active" : ""}><input type="checkbox" checked={scenarioFlags.autoRoads} onChange={() => toggleScenario("autoRoads")} /><Waypoints size={18} /><span><b>{tr ? "Otomatik yeni yol testi" : "Automatic new-road test"}</b><small>{tr ? "Tek yön + çift yön birlikte karşılaştırılır" : "One-way + two-way are compared together"}</small></span></label>
-                <label className={scenarioFlags.newRoad ? "active" : ""}><input type="checkbox" checked={scenarioFlags.newRoad} onChange={() => toggleScenario("newRoad")} /><PencilRuler size={18} /><span><b>{tr ? "Yeni yol" : "New road"}</b><small>{newRoadRouting ? (tr ? "Yol ağına oturtuluyor…" : "Aligning to roads…") : newRoadWaypoints.length >= 2 ? `${newRoadWaypoints.length} ${tr ? "kontrol noktası" : "waypoints"}` : (tr ? "Haritada en az 2 nokta seçin" : "Select at least 2 map points")}</small></span></label>
-                <label className={scenarioFlags.closure ? "active" : ""}><input type="checkbox" checked={scenarioFlags.closure} onChange={() => toggleScenario("closure")} /><Route size={18} /><span><b>{tr ? "Güvenli kapatma" : "Safe closure"}</b><small>{tr ? "Bağlantıyı bozmayan aday" : "Connectivity-preserving candidate"}</small></span></label>
-                <label className={scenarioFlags.signal ? "active" : ""}><input type="checkbox" checked={scenarioFlags.signal} onChange={() => toggleScenario("signal")} /><CircleDot size={18} /><span><b>{tr ? "Sinyal optimizasyonu" : "Signal optimization"}</b><small>{tr ? "Webster gecikme modeli" : "Webster delay model"}</small></span></label>
-                <label className={scenarioFlags.emergency ? "active" : ""}><input type="checkbox" checked={scenarioFlags.emergency} onChange={() => toggleScenario("emergency")} /><Gauge size={18} /><span><b>{tr ? "Acil koridor" : "Emergency corridor"}</b><small>{tr ? "Ayrı ETA değerlendirmesi" : "Separate ETA assessment"}</small></span></label>
+                <label className={scenarioFlags.autoRoads ? "active" : ""}><input type="checkbox" checked={scenarioFlags.autoRoads} onChange={() => toggleScenario("autoRoads")} /><Waypoints size={18} /><span><b>{t("Otomatik yeni yol testi", "Avtomatik yeni yol testi", "Automatic new-road test")}</b><small>{t("Tek ve çift yön birlikte karşılaştırılır", "Bir və iki istiqamət birlikdə müqayisə edilir", "One-way and two-way are compared")}</small></span></label>
+                <label className={scenarioFlags.newRoad ? "active" : ""}><input type="checkbox" checked={scenarioFlags.newRoad} onChange={() => toggleScenario("newRoad")} /><PencilRuler size={18} /><span><b>{t("Yeni yol çiz", "Yeni yol çək", "Draw a new road")}</b><small>{newRoadRouting ? t("Yol ağına oturtuluyor…", "Yol şəbəkəsinə uyğunlaşdırılır…", "Aligning to roads…") : newRoadWaypoints.length >= 2 ? `${newRoadWaypoints.length} ${t("kontrol noktası", "nəzarət nöqtəsi", "waypoints")}` : t("Haritada en az 2 nokta seçin", "Xəritədə ən azı 2 nöqtə seçin", "Select at least 2 map points")}</small></span></label>
+                <label className={scenarioFlags.closure ? "active" : ""}><input type="checkbox" checked={scenarioFlags.closure} onChange={() => toggleScenario("closure")} /><Route size={18} /><span><b>{t("Güvenli kapatma", "Təhlükəsiz bağlanma", "Safe closure")}</b><small>{t("Bağlantıyı bozmayan aday", "Əlaqəni pozmayan namizəd", "Connectivity-preserving candidate")}</small></span></label>
+                <label className={scenarioFlags.signal ? "active" : ""}><input type="checkbox" checked={scenarioFlags.signal} onChange={() => toggleScenario("signal")} /><CircleDot size={18} /><span><b>{t("Sinyal optimizasyonu", "Siqnal optimallaşdırılması", "Signal optimization")}</b><small>{t("Webster gecikme modeli", "Webster gecikmə modeli", "Webster delay model")}</small></span></label>
+                <label className={scenarioFlags.emergency ? "active" : ""}><input type="checkbox" checked={scenarioFlags.emergency} onChange={() => toggleScenario("emergency")} /><Gauge size={18} /><span><b>{t("Acil koridor", "Təcili koridor", "Emergency corridor")}</b><small>{t("Ayrı ETA değerlendirmesi", "Ayrı ETA qiymətləndirilməsi", "Separate ETA assessment")}</small></span></label>
               </div>
 
               {scenarioFlags.newRoad && <div className="new-road-editor">
-                <div className="inline-actions"><button type="button" className={interactionMode === "newRoad" ? "active" : ""} disabled={newRoadRouting} onClick={() => setInteractionMode(interactionMode === "newRoad" ? null : "newRoad")}><PencilRuler size={15} />{interactionMode === "newRoad" ? (tr ? "Çizimi bitir" : "Finish drawing") : (tr ? "Çizime devam" : "Continue drawing")}</button><button type="button" disabled={newRoadRouting} onClick={() => { setNewRoadGeometry([]); setNewRoadWaypoints([]); }}><RotateCcw size={15} />{tr ? "Temizle" : "Clear"}</button></div>
-                <p className="field-help">{tr ? "Seçtiğiniz kontrol noktaları arasındaki çizgi, sürülebilir OSM yollarına otomatik oturtulur; binaların üzerinden düz bağlantı kurulmaz." : "The line between selected waypoints is automatically aligned to drivable OSM roads; no straight connection is drawn through buildings."}</p>
-                <div className="two-column-fields"><label><span>{tr ? "Yön" : "Direction"}</span><select value={roadDirection} onChange={(event) => setRoadDirection(event.target.value as "one-way" | "two-way")}><option value="two-way">{tr ? "Çift yön" : "Two-way"}</option><option value="one-way">{tr ? "Tek yön" : "One-way"}</option></select></label><label><span>{tr ? "Şerit" : "Lanes"}</span><input type="number" min="1" max="8" value={laneCount} onChange={(event) => setLaneCount(Number(event.target.value))} /></label><label><span>{tr ? "Hız sınırı" : "Speed limit"}</span><div className="input-suffix"><input type="number" min="10" max="160" value={speedLimit} onChange={(event) => setSpeedLimit(Number(event.target.value))} /><small>km/h</small></div></label><label><span>{tr ? "Kapasite" : "Capacity"}</span><input type="number" min="100" max="20000" placeholder={tr ? "Tahmin et" : "Estimate"} value={capacity} onChange={(event) => setCapacity(event.target.value)} /></label></div>
+                <div className="inline-actions"><button type="button" className={interactionMode === "newRoad" ? "active" : ""} disabled={newRoadRouting} onClick={() => setInteractionMode(interactionMode === "newRoad" ? null : "newRoad")}><PencilRuler size={15} />{interactionMode === "newRoad" ? t("Çizimi bitir", "Çəkməni bitir", "Finish drawing") : t("Çizime devam", "Çəkməyə davam et", "Continue drawing")}</button><button type="button" disabled={newRoadRouting} onClick={() => { setNewRoadGeometry([]); setNewRoadWaypoints([]); }}><RotateCcw size={15} />{t("Temizle", "Təmizlə", "Clear")}</button></div>
+                <p className="field-help">{t("Kontrol noktaları arasındaki çizgi sürülebilir OSM yollarına oturtulur; binaların üzerinden geçmez.", "Nəzarət nöqtələri arasındakı xətt avtomobil üçün açıq OSM yollarına uyğunlaşdırılır; binaların üzərindən keçmir.", "The line is aligned to drivable OSM roads and never cuts through buildings.")}</p>
+                <div className="two-column-fields"><label><span>{t("Yön", "İstiqamət", "Direction")}</span><select value={roadDirection} onChange={(event) => setRoadDirection(event.target.value as "one-way" | "two-way")}><option value="two-way">{t("Çift yön", "İki istiqamət", "Two-way")}</option><option value="one-way">{t("Tek yön", "Bir istiqamət", "One-way")}</option></select></label><label><span>{t("Şerit", "Zolaq", "Lanes")}</span><input type="number" min="1" max="8" value={laneCount} onChange={(event) => setLaneCount(Number(event.target.value))} /></label><label><span>{t("Hız sınırı", "Sürət həddi", "Speed limit")}</span><div className="input-suffix"><input type="number" min="10" max="160" value={speedLimit} onChange={(event) => setSpeedLimit(Number(event.target.value))} /><small>km/h</small></div></label><label><span>{t("Kapasite", "Tutum", "Capacity")}</span><input type="number" min="100" max="20000" placeholder={t("Tahmin et", "Təxmin et", "Estimate")} value={capacity} onChange={(event) => setCapacity(event.target.value)} /></label></div>
               </div>}
 
-              <button type="button" className="advanced-toggle" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((open) => !open)}><Settings2 size={15} />{tr ? "Gelişmiş sinyal ayarları" : "Advanced signal settings"}</button>
-              {advancedOpen && <div className="two-column-fields advanced-fields"><label><span>{tr ? "Döngü süresi" : "Cycle length"}</span><div className="input-suffix"><input type="number" min="30" max="240" value={cycleSeconds} onChange={(event) => setCycleSeconds(Number(event.target.value))} /><small>sn</small></div></label><label><span>{tr ? "Yeşil oranı" : "Green ratio"}</span><div className="input-suffix"><input type="number" min="15" max="85" value={greenRatio} onChange={(event) => setGreenRatio(Number(event.target.value))} /><small>%</small></div></label></div>}
+              <button type="button" className="advanced-toggle" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((open) => !open)}><Settings2 size={15} />{t("Gelişmiş sinyal ayarları", "Qabaqcıl siqnal parametrləri", "Advanced signal settings")}</button>
+              {advancedOpen && <div className="two-column-fields advanced-fields"><label><span>{t("Döngü süresi", "Dövr müddəti", "Cycle length")}</span><div className="input-suffix"><input type="number" min="30" max="240" value={cycleSeconds} onChange={(event) => setCycleSeconds(Number(event.target.value))} /><small>{t("sn", "san", "sec")}</small></div></label><label><span>{t("Yeşil oranı", "Yaşıl nisbəti", "Green ratio")}</span><div className="input-suffix"><input type="number" min="15" max="85" value={greenRatio} onChange={(event) => setGreenRatio(Number(event.target.value))} /><small>%</small></div></label></div>}
+              <div className={`solver-protocol ${result?.baseline.metrics.converged ? "is-converged" : ""}`}>
+                <span><Sigma size={15}/>{t("Denge çözümü", "Tarazlıq həlli", "Equilibrium solution")}</span>
+                <strong>Frank–Wolfe</strong>
+                <small>{result?.baseline.metrics.converged
+                  ? `✓ ${t("Yakınsadı", "Yaxınlaşdı", "Converged")} · ${result.baseline.metrics.iterations} iter. · ε = ${result.baseline.metrics.relativeGap.toExponential(1)}`
+                  : t("Yakınsama kuralı: relative gap ≤ 1 × 10⁻⁴", "Yaxınlaşma qaydası: relative gap ≤ 1 × 10⁻⁴", "Convergence rule: relative gap ≤ 1 × 10⁻⁴")}</small>
+              </div>
             </section>
 
             {error && <div className="form-error" role="alert">{error}</div>}
-            <div className="control-actions"><button type="button" className="primary-action" disabled={loading || newRoadRouting} onClick={runAnalysis}>{newRoadRouting ? (tr ? "Yola oturtuluyor…" : "Aligning to roads…") : loading ? (tr ? "Denge çözülüyor…" : "Solving equilibrium…") : (tr ? "Analizi çalıştır" : "Run analysis")}<ArrowRight size={18} /></button><button type="button" className="secondary-action" onClick={reset}><RotateCcw size={16} />{tr ? "Sıfırla" : "Reset"}</button></div>
+            <div className="control-actions"><button type="button" className="primary-action" disabled={loading || newRoadRouting} onClick={runAnalysis}>{newRoadRouting ? t("Yola oturtuluyor…", "Yola uyğunlaşdırılır…", "Aligning to roads…") : loading ? t("Denge çözülüyor…", "Tarazlıq hesablanır…", "Solving equilibrium…") : t("Analizi çalıştır", "Analizi işə sal", "Run analysis")}<ArrowRight size={18} /></button><button type="button" className="secondary-action" onClick={reset}><RotateCcw size={16} />{t("Sıfırla", "Sıfırla", "Reset")}</button></div>
           </div>
         </details>
 
         <section className="map-workspace" id="analysis-map-workspace">
           <div className="map-toolbar">
-            <div><span className="live-indicator"><i className={mode === "live-calibrated" ? "pulse" : ""} />{mode === "live-calibrated" ? (tr ? "Canlı kalibrasyon" : "Live calibration") : (tr ? "Statik koridor" : "Static corridor")}</span><small>{coordinateText(start)} → {coordinateText(end)}</small></div>
-            <div className="map-toolbar-meta"><span>{routeData.length || "—"} {tr ? "rota" : "routes"}</span><span>{newRoadWaypoints.length} {tr ? "kontrol noktası" : "waypoints"}</span></div>
+            <div><span className="live-indicator"><i className={mode === "live-calibrated" ? "pulse" : ""} />{mode === "live-calibrated" ? t("Canlı kalibrasyon", "Canlı kalibrasiya", "Live calibration") : t("Statik koridor", "Statik koridor", "Static corridor")}</span><small>{coordinateText(start)} → {coordinateText(end)}</small></div>
+            <div className="map-toolbar-meta"><span>FIG. 01</span><span>{routeData.length || "—"} {t("rota", "marşrut", "routes")}</span><span>{newRoadWaypoints.length} {t("kontrol noktası", "nəzarət nöqtəsi", "waypoints")}</span></div>
           </div>
-          <AnalysisMap language={language} start={start} end={end} routes={mapRoutes} liveTraffic={result?.liveTraffic} scenario={selectedScenario} newRoadGeometry={newRoadGeometry} interactionMode={interactionMode} onMapPick={handleMapPick} />
-          {mappableScenarios.length > 0 && <div className="map-scenario-switcher" aria-label={tr ? "Haritada gösterilecek müdahale" : "Action shown on the map"}>
-            <span>{tr ? "Haritada göster" : "Show on map"}</span>
-            <div>{orderedMapScenarios.map((scenario) => <button type="button" key={scenario.key} className={selectedScenario?.key === scenario.key ? "active" : ""} onClick={() => setSelectedScenario(scenario)}>
-              {scenario.type === "signal" ? <CircleDot size={15} /> : scenario.type === "closure" ? <Route size={15} /> : <Waypoints size={15} />}
-              <b>{scenario.title}</b><small>{scenario.deltaMinutes > 0 ? "+" : ""}{scenario.deltaMinutes.toFixed(1)} {tr ? "dk" : "min"}</small>
-            </button>)}</div>
-          </div>}
-          {!result && !loading && <div className="map-empty-state"><Waypoints size={20} /><span>{tr ? "Analizi çalıştırın: mevcut ağ, tek yönlü yeni yol, çift yönlü yeni yol, sinyal ve kapatma seçenekleri karşılaştırılsın." : "Run the analysis to compare the current network, one-way road, two-way road, signal and closure options."}</span></div>}
-          {loading && <div className="map-loading" role="status"><i /><strong>{tr ? "100 belirsizlik örneklemesi çalışıyor" : "Running 100 uncertainty samples"}</strong><span>{tr ? "Yönlü ağ dengesi kuruluyor…" : "Solving the directed network equilibrium…"}</span></div>}
+          <AnalysisMap language={language} start={start} end={end} routes={mapRoutes} liveTraffic={result?.liveTraffic} scenarios={mappableScenarios} scenario={selectedScenario} newRoadGeometry={newRoadGeometry} interactionMode={interactionMode} onMapPick={handleMapPick} />
+          <div className={`map-decision-badge status-${mapDecisionStatus}`}>
+            <small>{t("ANLIK MODEL KARARI", "ANLIQ MODEL QƏRARI", "CURRENT MODEL DECISION")}</small>
+            <strong>{mapDecisionLabel}</strong>
+            <span>{result
+              ? t("Karar 100 belirsizlik örneği ve kullanıcı dengesi üzerinden üretildi.", "Qərar 100 qeyri-müəyyənlik nümunəsi və istifadəçi tarazlığı əsasında hesablandı.", "Decision based on user equilibrium and 100 uncertainty samples.")
+              : t("Kararı, çözüm katmanlarını ve değerleri görmek için analizi çalıştırın.", "Qərarı, həll laylarını və dəyərləri görmək üçün analizi başladın.", "Run the analysis to reveal the decision, solution layers and values.")}</span>
+            {!result && !loading && <button type="button" onClick={runAnalysis}>{t("Şimdi analiz et", "İndi analiz et", "Run now")}<ArrowRight size={14}/></button>}
+          </div>
+          <div className="map-layer-dock" aria-label={t("Analiz katmanları", "Analiz layları", "Analysis layers")}>
+            <span>{t("ANALİZ KATMANLARI", "ANALİZ LAYLARI", "ANALYSIS LAYERS")}</span>
+            <div>
+              <button type="button" className={!selectedScenario || selectedScenario.type === "baseline" ? "active" : ""} onClick={() => setSelectedScenario(result?.baseline ?? null)}><Waypoints size={14}/><b>{t("Mevcut ağ", "Mövcud şəbəkə", "Baseline")}</b></button>
+              {result ? orderedMapScenarios.map((scenario) => <button type="button" key={scenario.key} className={selectedScenario?.key === scenario.key ? "active" : ""} onClick={() => setSelectedScenario(scenario)}>
+                {scenario.type === "signal" ? <CircleDot size={14}/> : scenario.type === "closure" ? <Route size={14}/> : scenario.type === "emergencyPriority" ? <Gauge size={14}/> : <Waypoints size={14}/>}
+                <b>{scenarioName(language, scenario)}</b><small>{scenario.deltaMinutes > 0 ? "+" : ""}{scenario.deltaMinutes.toFixed(1)} {t("dk", "dəq", "min")}</small>
+              </button>) : <>
+                <button type="button" disabled><Waypoints size={14}/><b>{t("Yeni yol · Tek/Çift", "Yeni yol · Bir/İki istiqamət", "New road · 1/2-way")}</b></button>
+                <button type="button" disabled><CircleDot size={14}/><b>{t("Akıllı sinyal", "Ağıllı siqnal", "Smart signal")}</b></button>
+                <button type="button" disabled><Route size={14}/><b>{t("Güvenli kapatma", "Təhlükəsiz bağlanma", "Safe closure")}</b></button>
+                <button type="button" disabled><Gauge size={14}/><b>{t("Acil koridor", "Təcili koridor", "Emergency corridor")}</b></button>
+              </>}
+            </div>
+          </div>
+          {loading && <div className="map-loading" role="status"><i /><strong>{t("100 belirsizlik örneği çalışıyor", "100 qeyri-müəyyənlik nümunəsi işlənir", "Running 100 uncertainty samples")}</strong><span>{t("Yönlü ağ dengesi kuruluyor…", "İstiqamətli şəbəkə tarazlığı hesablanır…", "Solving directed network equilibrium…")}</span></div>}
+          <div className="map-caption map-reading-guide">
+            <div><span>{t("HARİTA NASIL OKUNUR?", "XƏRİTƏ NECƏ OXUNUR?", "HOW TO READ THE MAP")}</span><p>{t("Renk yol hızını, çizgi biçimi müdahale türünü gösterir.", "Rəng yol sürətini, xətt forması müdaxilə növünü göstərir.", "Colour shows speed; line style identifies the intervention.")}</p></div>
+            <ul>
+              <li><i className="guide-speed"/>{t("Yeşil akıcı · Turuncu yavaş · Kırmızı yoğun", "Yaşıl sərbəst · Narıncı yavaş · Qırmızı sıx", "Green free · Orange slow · Red congested")}</li>
+              <li><i className="guide-road"/>{t("Kesik çizgi: önerilen yeni yol", "Kəsik xətt: təklif olunan yeni yol", "Dashed line: proposed new road")}</li>
+              <li><b>🚦</b>{t("Sinyal müdahalesi", "Siqnal müdaxiləsi", "Signal intervention")}</li>
+              <li><b>× / +</b>{t("Kapatma / acil koridor", "Bağlanma / təcili koridor", "Closure / emergency corridor")}</li>
+            </ul>
+          </div>
         </section>
+        <ResearchRail language={language} mode={mode} routeCount={routeData.length || result?.liveTraffic?.routes.length || 0} result={result} selectedScenario={selectedScenario} />
       </div>
 
-      <div className="mobile-run-bar"><button type="button" disabled={loading || newRoadRouting} onClick={runAnalysis}>{newRoadRouting ? (tr ? "Yola oturtuluyor…" : "Aligning to roads…") : loading ? (tr ? "Analiz ediliyor…" : "Analyzing…") : (tr ? "Analizi çalıştır" : "Run analysis")}<ArrowRight size={18} /></button></div>
+      <div className="mobile-run-bar"><button type="button" disabled={loading || newRoadRouting} onClick={runAnalysis}>{newRoadRouting ? t("Yola oturtuluyor…", "Yola uyğunlaşdırılır…", "Aligning to roads…") : loading ? t("Analiz ediliyor…", "Analiz aparılır…", "Analyzing…") : t("Analizi çalıştır", "Analizi işə sal", "Run analysis")}<ArrowRight size={18} /></button></div>
       {result && <div id="analysis-results" className="analysis-results-wrap"><ResultsDashboard language={language} result={result} selectedScenarioKey={selectedScenario?.key} onScenarioSelect={setSelectedScenario} onScenarioFocus={focusScenarioOnMap} /></div>}
     </main>
   );
